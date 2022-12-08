@@ -7,16 +7,15 @@ import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.SqlClient;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
-import org.jdbi.v3.core.Jdbi;
-import org.jdbi.v3.core.mapper.RowMapper;
-import org.jdbi.v3.core.statement.StatementContext;
+import org.junit.jupiter.api.Assertions;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.sql.ResultSet;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.time.LocalDateTime;
+import java.util.function.Function;
 
 @Testcontainers
 public abstract class IntegrationTest {
@@ -29,30 +28,37 @@ public abstract class IntegrationTest {
   @Container
   protected final PostgreSQLContainer<?> migxContainer = new PostgreSQLContainer<>(PG_IMAGE_NAME);
 
-  protected Jdbi flywayJdbi;
-
-  protected Jdbi migxJdbi;
+  protected enum Database {
+    FLYWAY, MIGX
+  }
 
   protected Flyway getFlyway() {
     String jdbcUrl = flywayContainer.getJdbcUrl();
     String username = flywayContainer.getUsername();
     String password = flywayContainer.getPassword();
 
-    flywayJdbi = Jdbi.create(jdbcUrl, username, password)
-      .registerRowMapper(new SchemaHistoryEntry.Mapper());
-
     return new FluentConfiguration()
       .dataSource(jdbcUrl, username, password)
       .load();
+  }
+
+  protected <T> T withConnection(Database database, ThrowingFunction<Connection, T> function) {
+    PostgreSQLContainer<?> container = switch (database) {
+      case MIGX -> migxContainer;
+      case FLYWAY -> flywayContainer;
+    };
+    try (Connection connection = DriverManager.getConnection(container.getJdbcUrl(), container.getUsername(), container.getPassword())) {
+      return function.apply(connection);
+    } catch (Throwable e) {
+      Assertions.fail(e);
+      throw new RuntimeException(e);
+    }
   }
 
   protected Migx getMigx(Vertx vertx) {
     String jdbcUrl = migxContainer.getJdbcUrl();
     String username = migxContainer.getUsername();
     String password = migxContainer.getPassword();
-
-    migxJdbi = Jdbi.create(jdbcUrl, username, password)
-      .registerRowMapper(new SchemaHistoryEntry.Mapper());
 
     PgConnectOptions connectOptions = PgConnectOptions.fromUri(jdbcUrl.substring("jdbc:".length()))
       .setUser(username)

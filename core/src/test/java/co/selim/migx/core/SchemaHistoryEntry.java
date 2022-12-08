@@ -1,11 +1,10 @@
 package co.selim.migx.core;
 
-import org.jdbi.v3.core.mapper.RowMapper;
-import org.jdbi.v3.core.statement.StatementContext;
-
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public record SchemaHistoryEntry(
   int installedRank,
@@ -19,31 +18,37 @@ public record SchemaHistoryEntry(
   long executionTime,
   boolean success
 ) {
-  public static final class Mapper implements RowMapper<SchemaHistoryEntry> {
+
+  public static final class Mapper implements ThrowingFunction<ResultSet, List<SchemaHistoryEntry>> {
     @Override
-    public SchemaHistoryEntry map(ResultSet rs, StatementContext ctx) throws SQLException {
-      int installedRank = rs.getInt("installed_rank");
-      String version = rs.getString("version");
-      String description = rs.getString("description");
-      String type = rs.getString("type");
-      String script = rs.getString("script");
-      long checksum = rs.getLong("checksum");
-      String installedBy = rs.getString("installed_by");
-      LocalDateTime installedOn = rs.getTimestamp("installed_on").toLocalDateTime();
-      long executionTime = rs.getLong("execution_time");
-      boolean success = rs.getBoolean("success");
-      return new SchemaHistoryEntry(
-        installedRank,
-        version,
-        description,
-        type,
-        script,
-        checksum,
-        installedBy,
-        installedOn,
-        executionTime,
-        success
-      );
+    public List<SchemaHistoryEntry> apply(ResultSet resultSet) throws Throwable {
+      List<SchemaHistoryEntry> schemaHistory = new ArrayList<>();
+      while (resultSet.next()) {
+        int installedRank = resultSet.getInt("installed_rank");
+        String version = resultSet.getString("version");
+        String description = resultSet.getString("description");
+        String type = resultSet.getString("type");
+        String script = resultSet.getString("script");
+        long checksum = resultSet.getLong("checksum");
+        String installedBy = resultSet.getString("installed_by");
+        LocalDateTime installedOn = resultSet.getTimestamp("installed_on").toLocalDateTime();
+        long executionTime = resultSet.getLong("execution_time");
+        boolean success = resultSet.getBoolean("success");
+        SchemaHistoryEntry entry = new SchemaHistoryEntry(
+          installedRank,
+          version,
+          description,
+          type,
+          script,
+          checksum,
+          installedBy,
+          installedOn,
+          executionTime,
+          success
+        );
+        schemaHistory.add(entry);
+      }
+      return schemaHistory;
     }
   }
 }
