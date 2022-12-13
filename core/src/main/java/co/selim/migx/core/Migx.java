@@ -12,4 +12,8 @@ public interface Migx {
   static Migx create(Vertx vertx, SqlClient sqlClient) {
     return new SqlClientMigx(vertx, sqlClient);
   }
+
+  static Migx create(Vertx vertx, SqlClient sqlClient, String migrationPath) {
+    return new SqlClientMigx(vertx, sqlClient, migrationPath);
+  }
 }
