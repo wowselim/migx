@@ -1,11 +1,15 @@
 package co.selim.migx.core.impl;
 
 import co.selim.migx.core.Migx;
+import co.selim.migx.core.output.MigrationOutput;
 import co.selim.migx.core.output.MigrationResult;
+import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.eventbus.Message;
+import io.vertx.core.impl.future.CompositeFutureImpl;
 import io.vertx.sqlclient.SqlClient;
+
+import java.util.List;
 
 public class SqlClientMigx implements Migx {
 
@@ -19,29 +23,56 @@ public class SqlClientMigx implements Migx {
 
   @Override
   public Future<MigrationResult> migrate() {
-    var migrationFiles = vertx.fileSystem()
+    return createSchemaHistoryTableIfNotExists()
+      .compose(empty -> runMigrations());
+  }
+
+  private Future<Void> createSchemaHistoryTableIfNotExists() {
+    return vertx.fileSystem()
+      .readFile("flyway_schema_history_ddl.sql")
+      .compose(buffer -> sqlClient.query(buffer.toString()).execute().mapEmpty());
+  }
+
+  private Future<MigrationResult> runMigrations() {
+    return vertx.fileSystem()
       .readDir("db/migration")
-      .map(migrationScripts ->
-        migrationScripts.stream()
-          .map(script ->
-            vertx.fileSystem()
-              .readFile(script)
-              .map(sqlClient.query(script).execute())
-          )
-          .toList()
-      );
-      /*
-      .map(migrations ->
-        migrations.stream()
-          .<Supplier<Future<Buffer>>>map(migration -> () -> vertx.fileSystem().readFile(migration))
-          .toList()
+      .compose(migrationScripts -> {
+          List<Future<MigrationOutput>> outputs = migrationScripts.stream()
+            .sorted()
+            .map(fileName ->
+              vertx.fileSystem()
+                .readFile(fileName)
+                .compose(buffer -> executeMigration(buffer.toString()))
+            )
+            .toList();
+          return all(outputs);
+        }
       )
-      .compose(x ->
-        x
-      );
-       */
+      .map(x -> {
+        List<MigrationOutput> migrationOutputs = x.list();
+        return new MigrationResult(
+          "TODO",
+          migrationOutputs,
+          migrationOutputs.size(),
+          "TODO",
+          true,
+          "TODO"
+        );
+      });
+  }
 
+  private Future<MigrationOutput> executeMigration(String script) {
+    return sqlClient.query(script)
+      .execute()
+      .map(x -> new MigrationOutput("TODO",
+        "TODO",
+        0,
+        "TODO",
+        "TODO",
+        "TODO"));
+  }
 
-    return null;
+  private <T> CompositeFuture all(List<Future<T>> futures) {
+    return CompositeFutureImpl.all(futures.toArray(Future[]::new));
   }
 }

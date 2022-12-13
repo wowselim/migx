@@ -20,21 +20,31 @@ public class MigrationTest extends IntegrationTest {
   @BeforeEach
   void migrate(Vertx vertx) {
     flywayResult = getFlyway().migrate();
-    // TODO: migxResult = getMigx(vertx).migrate().toCompletionStage().toCompletableFuture().join();
+    flywayResult.migrations.forEach(mig -> {
+      System.out.println("mig.category = " + mig.category);
+      System.out.println("mig.description = " + mig.description);
+      System.out.println("mig.executionTime = " + mig.executionTime);
+      System.out.println("mig.filepath = " + mig.filepath);
+      System.out.println("mig.type = " + mig.type);
+      System.out.println("mig.version = " + mig.version);
+      System.out.println("----------------------------------------");
+    });
+    migxResult = getMigx(vertx).migrate().toCompletionStage().toCompletableFuture().join();
   }
 
   @Test
   void x() {
     List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(Database.FLYWAY);
-    System.out.println(flywaySchemaHistory);
-    // TODO: List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(migxJdbi);
+    System.out.println("flywaySchemaHistory = " + flywaySchemaHistory);
+    List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(Database.MIGX);
+    System.out.println("migxSchemaHistory = " + migxSchemaHistory);
   }
 
   private List<SchemaHistoryEntry> getSchemaHistory(Database database) {
     return withConnection(database, connection -> {
       String query = "select * from flyway_schema_history order by installed_rank";
       try (ResultSet resultSet = connection.createStatement().executeQuery(query)) {
-        return new SchemaHistoryEntry.Mapper().apply(resultSet);
+        return SchemaHistoryEntry.MAPPER.apply(resultSet);
       }
     });
   }
