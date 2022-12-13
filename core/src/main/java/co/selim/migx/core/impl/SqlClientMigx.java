@@ -15,10 +15,16 @@ public class SqlClientMigx implements Migx {
 
   private final Vertx vertx;
   private final SqlClient sqlClient;
+  private final String migrationPath;
 
   public SqlClientMigx(Vertx vertx, SqlClient sqlClient) {
+    this(vertx, sqlClient, "db/migration");
+  }
+
+  public SqlClientMigx(Vertx vertx, SqlClient sqlClient, String migrationPath) {
     this.vertx = vertx;
     this.sqlClient = sqlClient;
+    this.migrationPath = migrationPath;
   }
 
   @Override
@@ -35,7 +41,7 @@ public class SqlClientMigx implements Migx {
 
   private Future<MigrationResult> runMigrations() {
     return vertx.fileSystem()
-      .readDir("db/migration")
+      .readDir(migrationPath)
       .compose(migrationScripts -> {
           List<Future<MigrationOutput>> outputs = migrationScripts.stream()
             .sorted()
