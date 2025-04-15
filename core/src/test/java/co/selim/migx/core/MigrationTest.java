@@ -30,6 +30,15 @@ public class MigrationTest extends IntegrationTest {
       System.out.println("----------------------------------------");
     });
     migxResult = getMigx(vertx).migrate().toCompletionStage().toCompletableFuture().join();
+    migxResult.migrations().forEach(mig -> {
+      System.out.println("mig.category = " + mig.category());
+      System.out.println("mig.description = " + mig.description());
+      System.out.println("mig.executionTime = " + mig.executionTime());
+      System.out.println("mig.filepath = " + mig.filepath());
+      System.out.println("mig.type = " + mig.type());
+      System.out.println("mig.version = " + mig.version());
+      System.out.println("----------------------------------------");
+    });
   }
 
   @Test

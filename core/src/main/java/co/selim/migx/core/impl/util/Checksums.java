@@ -5,6 +5,7 @@ import java.util.stream.Stream;
 import java.util.zip.CRC32;
 
 public final class Checksums {
+
   private Checksums() {
   }
 
