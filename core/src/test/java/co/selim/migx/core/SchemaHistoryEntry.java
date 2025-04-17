@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public record SchemaHistoryEntry(
   int installedRank,
@@ -47,4 +48,15 @@ public record SchemaHistoryEntry(
     }
     return schemaHistory;
   };
+
+  @Override
+  public boolean equals(Object o) {
+    if (!(o instanceof SchemaHistoryEntry that)) return false;
+    return checksum == that.checksum && success == that.success && installedRank == that.installedRank && Objects.equals(type, that.type) && Objects.equals(script, that.script) && Objects.equals(version, that.version) && Objects.equals(description, that.description) && Objects.equals(installedBy, that.installedBy);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(installedRank, version, description, type, script, checksum, installedBy, success);
+  }
 }

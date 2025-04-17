@@ -1,11 +1,9 @@
 package co.selim.migx.core.output;
 
+import co.selim.migx.core.impl.SqlMigrationScript;
+
 public record MigrationOutput(
-  String category,
-  String description,
-  int executionTime,
-  String filepath,
-  String type,
-  String version
+  SqlMigrationScript script,
+  long executionTime
 ) {
 }

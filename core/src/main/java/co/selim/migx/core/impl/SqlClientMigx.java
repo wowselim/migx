@@ -1,39 +1,38 @@
 package co.selim.migx.core.impl;
 
 import co.selim.migx.core.Migx;
+import co.selim.migx.core.impl.util.Checksums;
 import co.selim.migx.core.impl.util.Paths;
 import co.selim.migx.core.output.MigrationOutput;
-import co.selim.migx.core.output.MigrationResult;
-import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.impl.future.CompositeFutureImpl;
 import io.vertx.sqlclient.SqlClient;
+import io.vertx.sqlclient.Tuple;
 
+import java.io.File;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 
 public class SqlClientMigx implements Migx {
 
   private final Vertx vertx;
   private final SqlClient sqlClient;
-  private final String migrationPath;
-  private static final Set<String> SUPPORTED_MIGRATION_TYPES = Set.of("Versioned", "Repeatable");
+  private final List<String> migrationPaths;
 
   public SqlClientMigx(Vertx vertx, SqlClient sqlClient) {
-    this(vertx, sqlClient, "db/migration");
+    this(vertx, sqlClient, List.of("db/migration"));
   }
 
-  public SqlClientMigx(Vertx vertx, SqlClient sqlClient, String migrationPath) {
+  public SqlClientMigx(Vertx vertx, SqlClient sqlClient, List<String> migrationPaths) {
     this.vertx = vertx;
     this.sqlClient = sqlClient;
-    this.migrationPath = migrationPath;
+    this.migrationPaths = migrationPaths;
   }
 
   @Override
-  public Future<MigrationResult> migrate() {
+  public Future<Void> migrate() {
     return createSchemaHistoryTableIfNotExists()
-      .compose(empty -> runMigrations());
+      .compose(empty -> runMigrations().mapEmpty());
   }
 
   private Future<Void> createSchemaHistoryTableIfNotExists() {
@@ -42,49 +41,85 @@ public class SqlClientMigx implements Migx {
       .compose(buffer -> sqlClient.query(buffer.toString()).execute().mapEmpty());
   }
 
-  private Future<MigrationResult> runMigrations() {
+  private Future<MigrationOutput> runMigrations() {
     return vertx.fileSystem()
-      .readDir(migrationPath)
-      .compose(migrationScripts -> {
-          List<Future<MigrationOutput>> outputs = migrationScripts.stream()
-            .filter(path -> SUPPORTED_MIGRATION_TYPES.contains(Paths.getCategoryFromPath(path)))
-            .sorted(Paths.MIGRATION_COMPARATOR)
-            .map(path ->
-              vertx.fileSystem()
-                .readFile(path)
-                .compose(buffer -> executeMigration(path, buffer.toString()))
-            )
-            .toList();
-          return all(outputs);
-        }
-      )
-      .map(x -> {
-        List<MigrationOutput> migrationOutputs = x.list();
-        return new MigrationResult(
-          "TODO",
-          migrationOutputs,
-          migrationOutputs.size(),
-          "TODO",
-          true,
-          "TODO"
+      .readDir(migrationPaths.get(0))
+      .compose(migrationScripts ->
+        migrationScripts.stream()
+          .map(path ->
+            loadMigrationScript(path)
+              .compose(this::executeMigration)
+              .compose(this::updateHistoryTable)
+          )
+          .reduce((a, b) -> a.compose(x -> b))
+          .orElse(Future.succeededFuture())
+      );
+  }
+
+  private Future<SqlMigrationScript> loadMigrationScript(String path) {
+    return vertx.fileSystem()
+      .readFile(path)
+      .map(buffer -> {
+        String sql = buffer.toString();
+        int checksum = Checksums.calculateChecksum(sql);
+        String filename = new File(path).getName();
+        return new SqlMigrationScript(
+          path,
+          filename,
+          sql,
+          Paths.getDescriptionFromFilename(filename),
+          checksum,
+          SqlMigrationScript.Category.fromChar(Paths.getCategoryFromFilename(filename)),
+          Paths.getVersionFromFilename(filename)
         );
       });
   }
 
-  private Future<MigrationOutput> executeMigration(String path, String script) {
+  private Future<MigrationOutput> executeMigration(SqlMigrationScript script) {
     long startTime = System.currentTimeMillis();
-    return sqlClient.query(script)
+    return sqlClient.query(script.sql())
       .execute()
       .map(x -> new MigrationOutput(
-        Paths.getCategoryFromPath(path),
-        Paths.getDescriptionFromPath(path),
-        (int) (System.currentTimeMillis() - startTime),
-        path,
-        "SQL",
-        Paths.getVersionFromPath(path)));
+          script,
+          System.currentTimeMillis() - startTime
+        )
+      );
   }
 
-  private <T> CompositeFuture all(List<Future<T>> futures) {
-    return CompositeFutureImpl.all(futures.toArray(Future[]::new));
+  /*
+  create table if not exists flyway_schema_history
+(
+  installed_rank integer primary key         not null,
+  version        character varying(50),
+  description    character varying(200)      not null,
+  type           character varying(20)       not null,
+  script         character varying(1000)     not null,
+  checksum       integer,
+  installed_by   character varying(100)      not null,
+  installed_on   timestamp without time zone not null default now(),
+  execution_time integer                     not null,
+  success        boolean                     not null
+);
+create index flyway_schema_history_s_idx on flyway_schema_history using btree (success);
+   */
+  private Future<MigrationOutput> updateHistoryTable(MigrationOutput migrationOutput) {
+    SqlMigrationScript script = migrationOutput.script();
+    String sql = """
+      insert into flyway_schema_history(installed_rank, version, description, type,\
+      script, checksum, installed_by, installed_on, execution_time, success)\
+      values((select coalesce(max(installed_rank), 0) + 1 from flyway_schema_history),\
+      $1, $2, 'SQL', $3, $4, (select current_user), $5, $6, $7)""";
+    Tuple tuple = Tuple.of(
+      script.version(),
+      script.description(),
+      script.filename(),
+      script.checksum(),
+      LocalDateTime.now(),
+      migrationOutput.executionTime(),
+      true
+    );
+    return sqlClient.preparedQuery(sql)
+      .execute(tuple)
+      .map(migrationOutput);
   }
 }
