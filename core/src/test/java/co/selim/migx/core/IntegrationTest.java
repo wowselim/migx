@@ -14,8 +14,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.util.function.Function;
 
 @Testcontainers
 public abstract class IntegrationTest {
