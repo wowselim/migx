@@ -88,11 +88,14 @@ public class SqlClientMigx implements Migx {
           .execute()
           .map(sql)
       )
-      .map(sql -> new MigrationOutput(
-          script,
-          System.currentTimeMillis() - startTime,
-          Checksums.calculateChecksum(sql)
-        )
+      .map(sql -> {
+          long executionTime = System.currentTimeMillis() - startTime;
+          return new MigrationOutput(
+            script,
+            executionTime,
+            Checksums.calculateChecksum(sql)
+          );
+        }
       );
   }
 
