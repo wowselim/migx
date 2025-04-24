@@ -86,12 +86,12 @@ public class SqlClientMigx implements Migx {
       .compose(sql ->
         sqlClient.query(sql)
           .execute()
-          .map(x -> Checksums.calculateChecksum(sql))
+          .map(sql)
       )
-      .map(checksum -> new MigrationOutput(
+      .map(sql -> new MigrationOutput(
           script,
           System.currentTimeMillis() - startTime,
-          checksum
+          Checksums.calculateChecksum(sql)
         )
       );
   }

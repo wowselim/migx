@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 
 public interface Migx {
+
   Future<Void> migrate();
 
   static Migx create(Vertx vertx, SqlClient sqlClient) {
