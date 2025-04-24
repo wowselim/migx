@@ -2,10 +2,12 @@ package co.selim.migx.core.impl;
 
 import co.selim.migx.core.Migx;
 import co.selim.migx.core.impl.util.Checksums;
+import co.selim.migx.core.impl.util.MigrationComparator;
 import co.selim.migx.core.impl.util.Paths;
 import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
@@ -42,52 +44,61 @@ public class SqlClientMigx implements Migx {
   }
 
   private Future<MigrationOutput> runMigrations() {
-    return vertx.fileSystem()
-      .readDir(migrationPaths.get(0))
-      .compose(migrationScripts ->
-        migrationScripts.stream()
+    List<Future<List<String>>> migrationFiles = migrationPaths.stream()
+      .map(path -> vertx.fileSystem().readDir(path))
+      .toList();
+    return Future.all(migrationFiles)
+      .compose(files -> {
+        List<List<String>> migrationScripts = files.list();
+        return migrationScripts.stream()
+          .flatMap(List::stream)
+          .sorted(new MigrationComparator())
           .map(path ->
             loadMigrationScript(path)
               .compose(this::executeMigration)
               .compose(this::updateHistoryTable)
           )
           .reduce((a, b) -> a.compose(x -> b))
-          .orElse(Future.succeededFuture())
-      );
+          .orElse(Future.succeededFuture());
+      });
   }
 
   private Future<SqlMigrationScript> loadMigrationScript(String path) {
-    return vertx.fileSystem()
+    Future<String> fileReader = vertx.fileSystem()
       .readFile(path)
-      .map(buffer -> {
-        String sql = buffer.toString();
-        int checksum = Checksums.calculateChecksum(sql);
-        String filename = new File(path).getName();
-        return new SqlMigrationScript(
-          path,
-          filename,
-          sql,
-          Paths.getDescriptionFromFilename(filename),
-          checksum,
-          SqlMigrationScript.Category.fromChar(Paths.getCategoryFromFilename(filename)),
-          Paths.getVersionFromFilename(filename)
-        );
-      });
+      .map(Buffer::toString);
+    String filename = path.substring(path.lastIndexOf(File.separatorChar) + 1);
+
+    return Future.succeededFuture(new SqlMigrationScript(
+        path,
+        filename,
+        fileReader,
+        Paths.getDescriptionFromFilename(filename),
+        SqlMigrationScript.Category.fromChar(Paths.getCategoryFromFilename(filename)),
+        Paths.getVersionFromFilename(filename)
+      )
+    );
   }
 
   private Future<MigrationOutput> executeMigration(SqlMigrationScript script) {
     long startTime = System.currentTimeMillis();
-    return sqlClient.query(script.sql())
-      .execute()
-      .map(x -> new MigrationOutput(
+    return script.sql()
+      .compose(sql ->
+        sqlClient.query(sql)
+          .execute()
+          .map(x -> Checksums.calculateChecksum(sql))
+      )
+      .map(checksum -> new MigrationOutput(
           script,
-          System.currentTimeMillis() - startTime
+          System.currentTimeMillis() - startTime,
+          checksum
         )
       );
   }
 
   private Future<MigrationOutput> updateHistoryTable(MigrationOutput migrationOutput) {
     SqlMigrationScript script = migrationOutput.script();
+
     String sql = """
       insert into flyway_schema_history(installed_rank, version, description, type,\
       script, checksum, installed_by, installed_on, execution_time, success)\
@@ -97,11 +108,12 @@ public class SqlClientMigx implements Migx {
       script.version(),
       script.description(),
       script.filename(),
-      script.checksum(),
+      migrationOutput.checksum(),
       LocalDateTime.now(),
       migrationOutput.executionTime(),
       true
     );
+
     return sqlClient.preparedQuery(sql)
       .execute(tuple)
       .map(migrationOutput);

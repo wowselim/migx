@@ -4,6 +4,7 @@ import co.selim.migx.core.impl.SqlMigrationScript;
 
 public record MigrationOutput(
   SqlMigrationScript script,
-  long executionTime
+  long executionTime,
+  int checksum
 ) {
 }
