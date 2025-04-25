@@ -15,7 +15,7 @@ public record SqlMigrationScript(
     BASELINE, VERSIONED, REPEATABLE;
 
     public static Category fromChar(char identifier) {
-      return switch (Character.toUpperCase(identifier)) {
+      return switch (identifier) {
         case 'B' -> BASELINE;
         case 'V' -> VERSIONED;
         case 'R' -> REPEATABLE;

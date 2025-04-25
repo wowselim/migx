@@ -2,7 +2,6 @@ package co.selim.migx.core;
 
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -10,6 +9,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.sql.ResultSet;
 import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ExtendWith(VertxExtension.class)
 public class MigrationTest extends IntegrationTest {
@@ -29,7 +30,7 @@ public class MigrationTest extends IntegrationTest {
   void migrationHistoriesMatch() {
     List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(Database.FLYWAY);
     List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(Database.MIGX);
-    Assertions.assertEquals(flywaySchemaHistory, migxSchemaHistory);
+    assertEquals(flywaySchemaHistory, migxSchemaHistory);
   }
 
   private List<SchemaHistoryEntry> getSchemaHistory(Database database) {

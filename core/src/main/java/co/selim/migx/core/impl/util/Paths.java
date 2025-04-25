@@ -1,5 +1,7 @@
 package co.selim.migx.core.impl.util;
 
+import java.io.File;
+
 public final class Paths {
 
   private static final String VERSION_SEPARATOR = "__";
@@ -8,9 +10,9 @@ public final class Paths {
   }
 
   public static String getDescriptionFromFilename(String filename) {
-    filename = filename.substring(filename.indexOf(VERSION_SEPARATOR) + VERSION_SEPARATOR.length());
-    filename = filename.substring(0, filename.lastIndexOf("."));
-    return filename.replace('_', ' ');
+    return filename.substring(0, filename.lastIndexOf("."))
+      .substring(filename.indexOf(VERSION_SEPARATOR) + VERSION_SEPARATOR.length())
+      .replace('_', ' ');
   }
 
   public static char getCategoryFromFilename(String filename) {
@@ -19,5 +21,9 @@ public final class Paths {
 
   public static String getVersionFromFilename(String filename) {
     return filename.substring(1, filename.indexOf(VERSION_SEPARATOR));
+  }
+
+  public static String getFilename(String path) {
+    return path.substring(path.lastIndexOf(File.separatorChar) + 1);
   }
 }
