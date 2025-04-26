@@ -35,10 +35,10 @@ public class PgMigrationRunner {
         }
       })
       .compose(output -> unlock().map(output))
-      .recover(t -> {
-        unlock();
-        throw new RuntimeException(t);
-      });
+      .recover(t ->
+        unlock()
+          .compose(x -> Future.failedFuture(t))
+      );
   }
 
   private Future<Void> lock() {
