@@ -122,6 +122,7 @@ public class PgMigrationRunner {
 
     String sql = """
       insert into flyway_schema_history \
+      (installed_rank, version, description, type, script, checksum, installed_by, installed_on, execution_time, success) \
       select coalesce(max(installed_rank), 0) + 1, $1, $2, 'SQL', $3, $4, current_user, $5, $6, $7 \
       from flyway_schema_history\
       """;
