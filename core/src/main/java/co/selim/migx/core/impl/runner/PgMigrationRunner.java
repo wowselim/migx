@@ -23,13 +23,12 @@ public class PgMigrationRunner {
   }
 
   public Future<MigrationOutput> run(SqlMigrationScript script) {
-    long startTime = Clock.now();
-
     return lock()
       .compose(x -> sqlClient.preparedQuery("SELECT version FROM flyway_schema_history WHERE version = $1")
         .execute(Tuple.of(script.version())))
       .compose(rowSet -> {
         if (!rowSet.iterator().hasNext()) {
+          long startTime = Clock.now();
           return script.sql()
             .compose(sql -> sqlClient.query(sql).execute().map(sql))
             .map(sql -> new MigrationOutput(script, Clock.millisSince(startTime), Checksums.calculateChecksum(sql)));
