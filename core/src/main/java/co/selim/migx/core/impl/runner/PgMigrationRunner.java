@@ -5,6 +5,7 @@ import co.selim.migx.core.impl.util.Checksums;
 import co.selim.migx.core.impl.util.Clock;
 import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
@@ -13,9 +14,11 @@ import java.time.LocalDateTime;
 public class PgMigrationRunner {
 
   private static final Tuple LOCK_ID = Tuple.of("migx".hashCode());
+  private final Vertx vertx;
   private final SqlClient sqlClient;
 
-  public PgMigrationRunner(SqlClient sqlClient) {
+  public PgMigrationRunner(Vertx vertx, SqlClient sqlClient) {
+    this.vertx = vertx;
     this.sqlClient = sqlClient;
   }
 
@@ -41,14 +44,20 @@ public class PgMigrationRunner {
       );
   }
 
+  public Future<Void> createSchemaHistoryTableIfNotExists() {
+    return vertx.fileSystem()
+      .readFile("pg_flyway_schema_history_ddl.sql")
+      .compose(buffer -> sqlClient.query(buffer.toString()).execute().mapEmpty());
+  }
+
   private Future<Void> lock() {
-    return sqlClient.preparedQuery("SELECT pg_advisory_lock($1)")
+    return sqlClient.preparedQuery("select pg_advisory_lock($1)")
       .execute(LOCK_ID)
       .mapEmpty();
   }
 
   private Future<Void> unlock() {
-    return sqlClient.preparedQuery("SELECT pg_advisory_unlock($1)")
+    return sqlClient.preparedQuery("select pg_advisory_unlock($1)")
       .execute(LOCK_ID)
       .mapEmpty();
   }
@@ -59,10 +68,10 @@ public class PgMigrationRunner {
     }
 
     String sql = """
-      insert into flyway_schema_history\
-      (installed_rank, version, description, type, script, checksum, installed_by, installed_on, execution_time, success)\
-      values\
-      ((select coalesce(max(installed_rank), 0) + 1 from flyway_schema_history), $1, $2, 'SQL', $3, $4, (select current_user), $5, $6, $7)""";
+      insert into flyway_schema_history \
+      select coalesce(max(installed_rank), 0) + 1, $1, $2, 'SQL', $3, $4, current_user, $5, $6, $7 \
+      from flyway_schema_history\
+      """;
 
     SqlMigrationScript script = migrationOutput.script();
     Tuple tuple = Tuple.of(

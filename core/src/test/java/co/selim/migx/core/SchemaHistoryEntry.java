@@ -52,7 +52,14 @@ public record SchemaHistoryEntry(
   @Override
   public boolean equals(Object o) {
     if (!(o instanceof SchemaHistoryEntry that)) return false;
-    return checksum == that.checksum && success == that.success && installedRank == that.installedRank && Objects.equals(type, that.type) && Objects.equals(script, that.script) && Objects.equals(version, that.version) && Objects.equals(description, that.description) && Objects.equals(installedBy, that.installedBy);
+    return checksum == that.checksum &&
+      success == that.success &&
+      installedRank == that.installedRank &&
+      Objects.equals(type, that.type) &&
+      Objects.equals(script, that.script) &&
+      Objects.equals(version, that.version) &&
+      Objects.equals(description, that.description) &&
+      Objects.equals(installedBy, that.installedBy);
   }
 
   @Override

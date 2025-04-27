@@ -7,6 +7,8 @@ import java.util.List;
 
 public class MigrationComparator implements Comparator<String> {
 
+  private static final String VERSION_SEPARATOR = "__";
+
   @Override
   public int compare(String path1, String path2) {
     String filename1 = path1.substring(path1.lastIndexOf(File.separatorChar) + 1);
@@ -41,7 +43,7 @@ public class MigrationComparator implements Comparator<String> {
 
   private List<Integer> extractVersion(String filename, int categoryOrder) {
     if (categoryOrder == 0 || categoryOrder == 1) {
-      int versionEnd = filename.indexOf("__");
+      int versionEnd = filename.indexOf(VERSION_SEPARATOR);
       if (versionEnd > 1) {
         String versionPart = filename.substring(1, versionEnd);
         return parseVersion(versionPart);

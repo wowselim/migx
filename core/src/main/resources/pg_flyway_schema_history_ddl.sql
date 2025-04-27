@@ -11,3 +11,5 @@ create table if not exists flyway_schema_history
   execution_time integer             not null,
   success        boolean             not null
 );
+
+create index if not exists flyway_schema_history_s_idx on flyway_schema_history (success);

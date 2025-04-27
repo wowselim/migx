@@ -15,7 +15,6 @@ import java.util.List;
 public class SqlClientMigx implements Migx {
 
   private final Vertx vertx;
-  private final SqlClient sqlClient;
   private final List<String> migrationPaths;
   private final PgMigrationRunner pgMigrationRunner;
 
@@ -25,21 +24,14 @@ public class SqlClientMigx implements Migx {
 
   public SqlClientMigx(Vertx vertx, SqlClient sqlClient, List<String> migrationPaths) {
     this.vertx = vertx;
-    this.sqlClient = sqlClient;
     this.migrationPaths = migrationPaths;
-    this.pgMigrationRunner = new PgMigrationRunner(sqlClient);
+    this.pgMigrationRunner = new PgMigrationRunner(vertx, sqlClient);
   }
 
   @Override
   public Future<Void> migrate() {
-    return createSchemaHistoryTableIfNotExists()
+    return pgMigrationRunner.createSchemaHistoryTableIfNotExists()
       .compose(empty -> runMigrations().mapEmpty());
-  }
-
-  private Future<Void> createSchemaHistoryTableIfNotExists() {
-    return vertx.fileSystem()
-      .readFile("flyway_schema_history_ddl.sql")
-      .compose(buffer -> sqlClient.query(buffer.toString()).execute().mapEmpty());
   }
 
   private Future<MigrationOutput> runMigrations() {

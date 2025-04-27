@@ -2,7 +2,7 @@ package co.selim.migx.core;
 
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgConnectOptions;
-import io.vertx.pgclient.PgPool;
+import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.SqlClient;
 import org.flywaydb.core.Flyway;
@@ -62,7 +62,7 @@ public abstract class IntegrationTest {
       .setUser(username)
       .setPassword(password);
     PoolOptions poolOptions = new PoolOptions().setMaxSize(4);
-    SqlClient client = PgPool.client(vertx, connectOptions, poolOptions);
+    SqlClient client = Pool.pool(vertx, connectOptions, poolOptions);
     return Migx.create(vertx, client);
   }
 }
