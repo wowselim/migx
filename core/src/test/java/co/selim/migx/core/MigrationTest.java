@@ -10,7 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.sql.ResultSet;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 
 @ExtendWith(VertxExtension.class)
 public class MigrationTest extends IntegrationTest {
@@ -30,7 +30,7 @@ public class MigrationTest extends IntegrationTest {
   void migrationHistoriesMatch() {
     List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(Database.FLYWAY);
     List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(Database.MIGX);
-    assertEquals(flywaySchemaHistory, migxSchemaHistory);
+    assertIterableEquals(flywaySchemaHistory, migxSchemaHistory);
   }
 
   private List<SchemaHistoryEntry> getSchemaHistory(Database database) {

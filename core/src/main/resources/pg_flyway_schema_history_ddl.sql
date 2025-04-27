@@ -1,7 +1,7 @@
 create table if not exists flyway_schema_history
 (
   installed_rank integer primary key not null,
-  version        varchar(50)         not null unique,
+  version        varchar(50)         unique,
   description    varchar(200)        not null,
   type           varchar(20)         not null,
   script         varchar(1000)       not null,

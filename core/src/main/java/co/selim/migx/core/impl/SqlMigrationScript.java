@@ -12,11 +12,10 @@ public record SqlMigrationScript(
 ) {
 
   public enum Category {
-    BASELINE, VERSIONED, REPEATABLE;
+    VERSIONED, REPEATABLE;
 
     public static Category fromChar(char identifier) {
       return switch (identifier) {
-        case 'B' -> BASELINE;
         case 'V' -> VERSIONED;
         case 'R' -> REPEATABLE;
         case 'U' -> throw new IllegalArgumentException("Undo migrations are not supported");
@@ -27,7 +26,6 @@ public record SqlMigrationScript(
     @Override
     public String toString() {
       return switch (this) {
-        case BASELINE -> "Baseline";
         case VERSIONED -> "Versioned";
         case REPEATABLE -> "Repeatable";
       };

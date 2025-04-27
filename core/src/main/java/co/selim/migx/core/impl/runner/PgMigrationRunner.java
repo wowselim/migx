@@ -6,6 +6,8 @@ import co.selim.migx.core.impl.util.Clock;
 import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowIterator;
 import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
@@ -24,23 +26,75 @@ public class PgMigrationRunner {
 
   public Future<MigrationOutput> run(SqlMigrationScript script) {
     return lock()
-      .compose(x -> sqlClient.preparedQuery("SELECT version FROM flyway_schema_history WHERE version = $1")
-        .execute(Tuple.of(script.version())))
-      .compose(rowSet -> {
-        if (!rowSet.iterator().hasNext()) {
-          long startTime = Clock.now();
-          return script.sql()
-            .compose(sql -> sqlClient.query(sql).execute().map(sql))
-            .map(sql -> new MigrationOutput(script, Clock.millisSince(startTime), Checksums.calculateChecksum(sql)));
-        } else {
-          return Future.succeededFuture(); // already applied
-        }
+      .compose(x -> switch (script.category()) {
+        case VERSIONED -> runVersionedMigration(script);
+        case REPEATABLE -> runRepeatableMigration(script);
       })
       .compose(output -> unlock().map(output))
       .recover(t ->
         unlock()
           .compose(x -> Future.failedFuture(t))
       );
+  }
+
+  private Future<MigrationOutput> runRepeatableMigration(SqlMigrationScript script) {
+    return sqlClient.preparedQuery("""
+        select checksum from flyway_schema_history \
+        where script = $1 \
+        order by installed_rank desc \
+        limit 1\
+        """)
+      .execute(Tuple.of(script.version()))
+      .compose(rowSet -> script.sql()
+        .compose(sql -> {
+          int currentChecksum = Checksums.calculateChecksum(sql);
+          RowIterator<Row> iterator = rowSet.iterator();
+
+          if (!iterator.hasNext() || iterator.next().getInteger("checksum") != currentChecksum) {
+            long startTime = Clock.now();
+            return sqlClient.query(sql).execute()
+              .map(x -> new MigrationOutput(
+                script,
+                Clock.millisSince(startTime),
+                currentChecksum
+              ));
+          } else {
+            return Future.succeededFuture();
+          }
+        }));
+  }
+
+  private Future<MigrationOutput> runVersionedMigration(SqlMigrationScript script) {
+    return sqlClient.preparedQuery("""
+        select checksum from flyway_schema_history \
+        where version = $1\
+        """)
+      .execute(Tuple.of(script.filename()))
+      .compose(rowSet -> script.sql()
+        .compose(sql -> {
+          int currentChecksum = Checksums.calculateChecksum(sql);
+          RowIterator<Row> iterator = rowSet.iterator();
+
+          if (!iterator.hasNext()) {
+            long startTime = Clock.now();
+            return sqlClient.query(sql).execute().map(sql)
+              .map(x -> new MigrationOutput(
+                script,
+                Clock.millisSince(startTime),
+                Checksums.calculateChecksum(sql)
+              ));
+          } else {
+            // Existing migration - verify checksum
+            int storedChecksum = iterator.next().getInteger("checksum");
+            if (storedChecksum != currentChecksum) {
+              return Future.failedFuture(new RuntimeException(
+                "Checksum mismatch for version " + script.version() +
+                  ". Expected " + storedChecksum + " but was " + currentChecksum
+              ));
+            }
+            return Future.succeededFuture(null); // Already applied
+          }
+        }));
   }
 
   public Future<Void> createSchemaHistoryTableIfNotExists() {
