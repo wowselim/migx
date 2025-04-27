@@ -34,7 +34,6 @@ public class MigrationComparator implements Comparator<String> {
 
   private int getTypeOrder(char type) {
     return switch (type) {
-      case 'B' -> 0;
       case 'V' -> 1;
       case 'R' -> 2;
       default -> throw new IllegalArgumentException("Unsupported migration type: " + type);
