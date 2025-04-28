@@ -4,7 +4,6 @@ import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
-import io.vertx.sqlclient.SqlClient;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Assertions;
@@ -62,7 +61,7 @@ public abstract class IntegrationTest {
       .setUser(username)
       .setPassword(password);
     PoolOptions poolOptions = new PoolOptions().setMaxSize(4);
-    SqlClient client = Pool.pool(vertx, connectOptions, poolOptions);
+    Pool client = Pool.pool(vertx, connectOptions, poolOptions);
     return Migx.create(vertx, client);
   }
 }

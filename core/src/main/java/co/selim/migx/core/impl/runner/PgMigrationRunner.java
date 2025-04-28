@@ -6,39 +6,51 @@ import co.selim.migx.core.impl.util.Clock;
 import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.sqlclient.Row;
-import io.vertx.sqlclient.RowIterator;
-import io.vertx.sqlclient.SqlClient;
-import io.vertx.sqlclient.Tuple;
+import io.vertx.sqlclient.*;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class PgMigrationRunner {
 
   private static final Tuple LOCK_ID = Tuple.of("migx".hashCode());
   private final Vertx vertx;
-  private final SqlClient sqlClient;
+  private final Pool pool;
+  private final AtomicBoolean schemaHistoryCreated = new AtomicBoolean(false);
 
-  public PgMigrationRunner(Vertx vertx, SqlClient sqlClient) {
+  public PgMigrationRunner(Vertx vertx, Pool pool) {
     this.vertx = vertx;
-    this.sqlClient = sqlClient;
+    this.pool = pool;
   }
 
   public Future<MigrationOutput> run(SqlMigrationScript script) {
-    return lock()
-      .compose(x -> switch (script.category()) {
-        case VERSIONED -> runVersionedMigration(script);
-        case REPEATABLE -> runRepeatableMigration(script);
-      })
-      .compose(output -> unlock().map(output))
-      .recover(t ->
-        unlock()
-          .compose(x -> Future.failedFuture(t))
-      );
+    Future<Void> start;
+    if (schemaHistoryCreated.compareAndSet(false, true)) {
+      start = createSchemaHistoryTableIfNotExists();
+    } else {
+      start = Future.succeededFuture();
+    }
+
+    return start
+      .compose(v ->
+        pool.withTransaction(c ->
+          lock(c)
+            .compose(x -> switch (script.category()) {
+              case VERSIONED -> runVersionedMigration(c, script);
+              case REPEATABLE -> runRepeatableMigration(c, script);
+            })
+            .compose(output -> updateHistoryTable(c, output))
+        ));
   }
 
-  private Future<MigrationOutput> runRepeatableMigration(SqlMigrationScript script) {
-    return sqlClient.preparedQuery("""
+  private Future<Void> createSchemaHistoryTableIfNotExists() {
+    return vertx.fileSystem()
+      .readFile("pg_flyway_schema_history_ddl.sql")
+      .compose(buffer -> pool.query(buffer.toString()).execute().mapEmpty());
+  }
+
+  private Future<MigrationOutput> runRepeatableMigration(SqlConnection connection, SqlMigrationScript script) {
+    return connection.preparedQuery("""
         select checksum from flyway_schema_history \
         where script = $1 \
         order by installed_rank desc \
@@ -52,7 +64,7 @@ public class PgMigrationRunner {
 
           if (!iterator.hasNext() || iterator.next().getInteger("checksum") != currentChecksum) {
             long startTime = Clock.now();
-            return sqlClient.query(sql).execute()
+            return connection.query(sql).execute()
               .map(x -> new MigrationOutput(
                 script,
                 Clock.millisSince(startTime),
@@ -64,8 +76,8 @@ public class PgMigrationRunner {
         }));
   }
 
-  private Future<MigrationOutput> runVersionedMigration(SqlMigrationScript script) {
-    return sqlClient.preparedQuery("""
+  private Future<MigrationOutput> runVersionedMigration(SqlConnection connection, SqlMigrationScript script) {
+    return connection.preparedQuery("""
         select checksum from flyway_schema_history \
         where version = $1\
         """)
@@ -77,7 +89,7 @@ public class PgMigrationRunner {
 
           if (!iterator.hasNext()) {
             long startTime = Clock.now();
-            return sqlClient.query(sql).execute().map(sql)
+            return connection.query(sql).execute().map(sql)
               .map(x -> new MigrationOutput(
                 script,
                 Clock.millisSince(startTime),
@@ -97,25 +109,13 @@ public class PgMigrationRunner {
         }));
   }
 
-  public Future<Void> createSchemaHistoryTableIfNotExists() {
-    return vertx.fileSystem()
-      .readFile("pg_flyway_schema_history_ddl.sql")
-      .compose(buffer -> sqlClient.query(buffer.toString()).execute().mapEmpty());
-  }
-
-  private Future<Void> lock() {
-    return sqlClient.preparedQuery("select pg_advisory_lock($1)")
+  private Future<Void> lock(SqlConnection connection) {
+    return connection.preparedQuery("select pg_advisory_xact_lock($1)")
       .execute(LOCK_ID)
       .mapEmpty();
   }
 
-  private Future<Void> unlock() {
-    return sqlClient.preparedQuery("select pg_advisory_unlock($1)")
-      .execute(LOCK_ID)
-      .mapEmpty();
-  }
-
-  public Future<MigrationOutput> updateHistoryTable(MigrationOutput migrationOutput) {
+  private Future<MigrationOutput> updateHistoryTable(SqlConnection connection, MigrationOutput migrationOutput) {
     if (migrationOutput == null) {
       return Future.succeededFuture();
     }
@@ -138,7 +138,7 @@ public class PgMigrationRunner {
       true
     );
 
-    return sqlClient.preparedQuery(sql)
+    return connection.preparedQuery(sql)
       .execute(tuple)
       .map(migrationOutput);
   }
