@@ -1,9 +1,9 @@
 package co.selim.migx.core.impl.util;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 public class MigrationComparator implements Comparator<String> {
 
@@ -11,11 +11,11 @@ public class MigrationComparator implements Comparator<String> {
 
   @Override
   public int compare(String path1, String path2) {
-    String filename1 = path1.substring(path1.lastIndexOf(File.separatorChar) + 1);
-    String filename2 = path2.substring(path2.lastIndexOf(File.separatorChar) + 1);
+    String filename1 = Paths.getFilename(path1);
+    String filename2 = Paths.getFilename(path2);
 
-    int categoryOrder1 = getTypeOrder(filename1.charAt(0));
-    int categoryOrder2 = getTypeOrder(filename2.charAt(0));
+    int categoryOrder1 = getTypeOrder(Paths.getCategoryFromFilename(filename1));
+    int categoryOrder2 = getTypeOrder(Paths.getCategoryFromFilename(filename2));
 
     int typeComparison = Integer.compare(categoryOrder1, categoryOrder2);
     if (typeComparison != 0) return typeComparison;
@@ -44,7 +44,7 @@ public class MigrationComparator implements Comparator<String> {
     if (categoryOrder == 0 || categoryOrder == 1) {
       int versionEnd = filename.indexOf(VERSION_SEPARATOR);
       if (versionEnd > 1) {
-        String versionPart = filename.substring(1, versionEnd);
+        String versionPart = Objects.requireNonNull(Paths.getVersionFromFilename(filename));
         return parseVersion(versionPart);
       }
     }
