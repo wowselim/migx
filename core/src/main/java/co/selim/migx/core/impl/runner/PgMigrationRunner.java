@@ -24,23 +24,23 @@ public class PgMigrationRunner {
   }
 
   public Future<MigrationOutput> run(SqlMigrationScript script) {
-    Future<Void> start;
     if (schemaHistoryCreated.compareAndSet(false, true)) {
-      start = createSchemaHistoryTableIfNotExists();
+      return createSchemaHistoryTableIfNotExists()
+        .compose(x -> doRun(script));
     } else {
-      start = Future.succeededFuture();
+      return doRun(script);
     }
+  }
 
-    return start
-      .compose(v ->
-        pool.withTransaction(c ->
-          lock(c)
-            .compose(x -> switch (script.category()) {
-              case VERSIONED -> runVersionedMigration(c, script);
-              case REPEATABLE -> runRepeatableMigration(c, script);
-            })
-            .compose(output -> updateHistoryTable(c, output))
-        ));
+  private Future<MigrationOutput> doRun(SqlMigrationScript script) {
+    return pool.withTransaction(connection ->
+      lock(connection)
+        .compose(x -> switch (script.category()) {
+          case VERSIONED -> runVersionedMigration(connection, script);
+          case REPEATABLE -> runRepeatableMigration(connection, script);
+        })
+        .compose(output -> updateHistoryTable(connection, output))
+    );
   }
 
   private Future<Void> createSchemaHistoryTableIfNotExists() {
