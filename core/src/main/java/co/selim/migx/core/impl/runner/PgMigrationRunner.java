@@ -56,7 +56,7 @@ public class PgMigrationRunner {
         order by installed_rank desc \
         limit 1\
         """)
-      .execute(Tuple.of(script.version()))
+      .execute(Tuple.of(script.filename()))
       .compose(rowSet -> script.sql()
         .compose(sql -> {
           int currentChecksum = Checksums.calculateChecksum(sql);
@@ -81,7 +81,7 @@ public class PgMigrationRunner {
         select checksum from flyway_schema_history \
         where version = $1\
         """)
-      .execute(Tuple.of(script.filename()))
+      .execute(Tuple.of(script.version()))
       .compose(rowSet -> script.sql()
         .compose(sql -> {
           int currentChecksum = Checksums.calculateChecksum(sql);
