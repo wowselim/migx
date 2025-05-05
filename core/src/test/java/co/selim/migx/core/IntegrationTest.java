@@ -13,6 +13,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.util.List;
 
 @Testcontainers
 public abstract class IntegrationTest {
@@ -29,17 +31,27 @@ public abstract class IntegrationTest {
     FLYWAY, MIGX
   }
 
-  protected Flyway getFlyway() {
+  protected Flyway getFlyway(String... locations) {
     String jdbcUrl = flywayContainer.getJdbcUrl();
     String username = flywayContainer.getUsername();
     String password = flywayContainer.getPassword();
 
     return new FluentConfiguration()
       .dataSource(jdbcUrl, username, password)
+      .locations(locations)
       .load();
   }
 
-  protected <T> T withConnection(Database database, ThrowingFunction<Connection, T> function) {
+  protected List<SchemaHistoryEntry> getSchemaHistory(Database database) {
+    return withConnection(database, connection -> {
+      String query = "select * from flyway_schema_history order by installed_rank";
+      try (ResultSet resultSet = connection.createStatement().executeQuery(query)) {
+        return SchemaHistoryEntry.MAPPER.apply(resultSet);
+      }
+    });
+  }
+
+  private <T> T withConnection(Database database, ThrowingFunction<Connection, T> function) {
     PostgreSQLContainer<?> container = switch (database) {
       case MIGX -> migxContainer;
       case FLYWAY -> flywayContainer;
@@ -52,7 +64,7 @@ public abstract class IntegrationTest {
     }
   }
 
-  protected Migx getMigx(Vertx vertx) {
+  protected Migx getMigx(Vertx vertx, String location, String... additionalLocations) {
     String jdbcUrl = migxContainer.getJdbcUrl();
     String username = migxContainer.getUsername();
     String password = migxContainer.getPassword();
@@ -62,6 +74,6 @@ public abstract class IntegrationTest {
       .setPassword(password);
     PoolOptions poolOptions = new PoolOptions().setMaxSize(4);
     Pool client = Pool.pool(vertx, connectOptions, poolOptions);
-    return Migx.create(vertx, client);
+    return Migx.create(vertx, client, location, additionalLocations);
   }
 }

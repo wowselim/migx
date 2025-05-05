@@ -1,41 +1,68 @@
 package co.selim.migx.core;
 
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
-import io.vertx.junit5.VertxTestContext;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
-import java.sql.ResultSet;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
+import static co.selim.migx.core.IntegrationTest.Database.FLYWAY;
+import static co.selim.migx.core.IntegrationTest.Database.MIGX;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 
 @ExtendWith(VertxExtension.class)
 public class MigrationTest extends IntegrationTest {
 
-  @BeforeEach
-  void migrate(Vertx vertx, VertxTestContext ctx) {
-    getFlyway().migrate();
-    getMigx(vertx).migrate().onComplete(ctx.succeedingThenComplete());
+  private final Vertx vertx;
+
+  public MigrationTest(Vertx vertx) {
+    this.vertx = vertx;
+  }
+
+  private void migrate(List<String> locations, Database... databases) {
+    for (Database db : databases) {
+      if (db == FLYWAY) {
+        getFlyway(locations.toArray(String[]::new)).migrate();
+      } else {
+        CountDownLatch latch = new CountDownLatch(1);
+        Future<Void> result = getMigx(vertx, locations.get(0), locations.stream().skip(1).toList().toArray(String[]::new))
+          .migrate()
+          .onComplete(x -> latch.countDown());
+        try {
+          latch.await();
+          if (result.failed()) {
+            throw new RuntimeException(result.cause());
+          }
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        }
+      }
+    }
   }
 
   @Test
   @DisplayName("The migration history tables match")
   void migrationHistoriesMatch() {
-    List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(Database.FLYWAY);
-    List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(Database.MIGX);
+    migrate(List.of("db/migration"), Database.values());
+    List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(FLYWAY);
+    List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(MIGX);
     assertIterableEquals(flywaySchemaHistory, migxSchemaHistory);
   }
 
-  private List<SchemaHistoryEntry> getSchemaHistory(Database database) {
-    return withConnection(database, connection -> {
-      String query = "select * from flyway_schema_history order by installed_rank";
-      try (ResultSet resultSet = connection.createStatement().executeQuery(query)) {
-        return SchemaHistoryEntry.MAPPER.apply(resultSet);
-      }
+  @ParameterizedTest
+  @EnumSource(Database.class)
+  @DisplayName("Migrations fail when table already exists")
+  void migrationsFailWhenTableAlreadyExists(Database db) {
+    Assertions.assertThrows(Throwable.class, () -> {
+      migrate(List.of("db/migration", "db/migration2"), db);
+      System.out.println(getSchemaHistory(db));
     });
   }
 }
