@@ -62,7 +62,6 @@ public class MigrationTest extends IntegrationTest {
   void migrationsFailWhenTableAlreadyExists(Database db) {
     Assertions.assertThrows(Throwable.class, () -> {
       migrate(List.of("db/migration", "db/migration2"), db);
-      System.out.println(getSchemaHistory(db));
     });
   }
 }
