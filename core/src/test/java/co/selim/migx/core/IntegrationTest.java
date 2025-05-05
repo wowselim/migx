@@ -64,7 +64,7 @@ public abstract class IntegrationTest {
     }
   }
 
-  protected Migx getMigx(Vertx vertx, String location, String... additionalLocations) {
+  protected Migx getMigx(Vertx vertx, List<String> locations) {
     String jdbcUrl = migxContainer.getJdbcUrl();
     String username = migxContainer.getUsername();
     String password = migxContainer.getPassword();
@@ -74,6 +74,6 @@ public abstract class IntegrationTest {
       .setPassword(password);
     PoolOptions poolOptions = new PoolOptions().setMaxSize(4);
     Pool client = Pool.pool(vertx, connectOptions, poolOptions);
-    return Migx.create(vertx, client, location, additionalLocations);
+    return Migx.create(vertx, client, locations);
   }
 }

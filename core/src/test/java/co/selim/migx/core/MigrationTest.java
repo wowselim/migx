@@ -32,7 +32,7 @@ public class MigrationTest extends IntegrationTest {
         getFlyway(locations.toArray(String[]::new)).migrate();
       } else {
         CountDownLatch latch = new CountDownLatch(1);
-        Future<Void> result = getMigx(vertx, locations.get(0), locations.stream().skip(1).toList().toArray(String[]::new))
+        Future<Void> result = getMigx(vertx, locations)
           .migrate()
           .onComplete(x -> latch.countDown());
         try {
