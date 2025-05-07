@@ -1,6 +1,7 @@
 package co.selim.migx.core;
 
 import co.selim.migx.core.impl.PoolMigx;
+import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Pool;
@@ -11,7 +12,7 @@ import java.util.List;
 
 public interface Migx {
 
-  Future<Void> migrate();
+  Future<List<MigrationOutput>> migrate();
 
   static Migx create(Vertx vertx, Pool pool) {
     return new PoolMigx(vertx, pool);

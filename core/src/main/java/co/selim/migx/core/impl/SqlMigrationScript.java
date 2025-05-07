@@ -3,7 +3,7 @@ package co.selim.migx.core.impl;
 import io.vertx.core.Future;
 
 public record SqlMigrationScript(
-  String path,
+  String filepath,
   String filename,
   Future<String> sql,
   String description,

@@ -3,7 +3,9 @@ package co.selim.migx.core.impl.runner;
 import co.selim.migx.core.impl.SqlMigrationScript;
 import co.selim.migx.core.impl.util.Checksums;
 import co.selim.migx.core.impl.util.Clock;
+import co.selim.migx.core.impl.util.Pair;
 import co.selim.migx.core.output.MigrationOutput;
+import co.selim.migx.core.output.MigrationOutputBuilder;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.*;
@@ -39,7 +41,7 @@ public class PgMigrationRunner {
           case VERSIONED -> runVersionedMigration(connection, script);
           case REPEATABLE -> runRepeatableMigration(connection, script);
         })
-        .compose(output -> updateHistoryTable(connection, output))
+        .compose(result -> updateHistoryTable(connection, script, result.left(), result.right()))
     );
   }
 
@@ -49,7 +51,7 @@ public class PgMigrationRunner {
       .compose(buffer -> pool.query(buffer.toString()).execute().mapEmpty());
   }
 
-  private Future<MigrationOutput> runRepeatableMigration(SqlConnection connection, SqlMigrationScript script) {
+  private Future<Pair<MigrationOutput, Integer>> runRepeatableMigration(SqlConnection connection, SqlMigrationScript script) {
     return connection.preparedQuery("""
         select checksum from flyway_schema_history \
         where script = $1 \
@@ -65,18 +67,24 @@ public class PgMigrationRunner {
           if (!iterator.hasNext() || iterator.next().getInteger("checksum") != currentChecksum) {
             long startTime = Clock.now();
             return connection.query(sql).execute()
-              .map(x -> new MigrationOutput(
-                script,
-                Clock.millisSince(startTime),
-                currentChecksum
-              ));
+              .map(x -> {
+                MigrationOutput output = MigrationOutputBuilder.builder()
+                  .category(script.category().toString())
+                  .version(script.version())
+                  .description(script.description())
+                  .type("SQL")
+                  .filepath(script.filepath())
+                  .executionTime(Clock.millisSince(startTime))
+                  .build();
+                return new Pair<>(output, currentChecksum);
+              });
           } else {
             return Future.succeededFuture();
           }
         }));
   }
 
-  private Future<MigrationOutput> runVersionedMigration(SqlConnection connection, SqlMigrationScript script) {
+  private Future<Pair<MigrationOutput, Integer>> runVersionedMigration(SqlConnection connection, SqlMigrationScript script) {
     return connection.preparedQuery("""
         select checksum from flyway_schema_history \
         where version = $1\
@@ -90,11 +98,17 @@ public class PgMigrationRunner {
           if (!iterator.hasNext()) {
             long startTime = Clock.now();
             return connection.query(sql).execute().map(sql)
-              .map(x -> new MigrationOutput(
-                script,
-                Clock.millisSince(startTime),
-                Checksums.calculateChecksum(sql)
-              ));
+              .map(x -> {
+                MigrationOutput output = MigrationOutputBuilder.builder()
+                  .category(script.category().toString())
+                  .version(script.version())
+                  .description(script.description())
+                  .type("SQL")
+                  .filepath(script.filepath())
+                  .executionTime(Clock.millisSince(startTime))
+                  .build();
+                return new Pair<>(output, currentChecksum);
+              });
           } else {
             // Existing migration - verify checksum
             int storedChecksum = iterator.next().getInteger("checksum");
@@ -115,8 +129,13 @@ public class PgMigrationRunner {
       .mapEmpty();
   }
 
-  private Future<MigrationOutput> updateHistoryTable(SqlConnection connection, MigrationOutput migrationOutput) {
-    if (migrationOutput == null) {
+  private Future<MigrationOutput> updateHistoryTable(
+    SqlConnection connection,
+    SqlMigrationScript script,
+    MigrationOutput output,
+    int checksum
+  ) {
+    if (script == null) {
       return Future.succeededFuture();
     }
 
@@ -127,19 +146,18 @@ public class PgMigrationRunner {
       from flyway_schema_history\
       """;
 
-    SqlMigrationScript script = migrationOutput.script();
     Tuple tuple = Tuple.of(
-      script.version(),
+      script.version().isEmpty() ? null : script.version(),
       script.description(),
       script.filename(),
-      migrationOutput.checksum(),
+      checksum,
       LocalDateTime.now(),
-      migrationOutput.executionTime(),
+      output.executionTime(),
       true
     );
 
     return connection.preparedQuery(sql)
       .execute(tuple)
-      .map(migrationOutput);
+      .map(output);
   }
 }

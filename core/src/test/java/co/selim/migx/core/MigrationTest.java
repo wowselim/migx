@@ -1,17 +1,16 @@
 package co.selim.migx.core;
 
-import io.vertx.core.Future;
+import co.selim.migx.core.impl.util.Pair;
+import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
+import org.flywaydb.core.api.output.MigrateOutput;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 
 import static co.selim.migx.core.IntegrationTest.Database.FLYWAY;
 import static co.selim.migx.core.IntegrationTest.Database.MIGX;
@@ -26,42 +25,33 @@ public class MigrationTest extends IntegrationTest {
     this.vertx = vertx;
   }
 
-  private void migrate(List<String> locations, Database... databases) {
-    for (Database db : databases) {
-      if (db == FLYWAY) {
-        getFlyway(locations.toArray(String[]::new)).migrate();
-      } else {
-        CountDownLatch latch = new CountDownLatch(1);
-        Future<Void> result = getMigx(vertx, locations)
-          .migrate()
-          .onComplete(x -> latch.countDown());
-        try {
-          latch.await();
-          if (result.failed()) {
-            throw new RuntimeException(result.cause());
-          }
-        } catch (InterruptedException e) {
-          throw new RuntimeException(e);
-        }
-      }
+  private Pair<List<MigrateOutput>, List<MigrationOutput>> migrate(List<String> locations) {
+    List<MigrateOutput> flywayOutput = getFlyway(locations.toArray(String[]::new)).migrate().migrations;
+    try {
+      List<MigrationOutput> migxOutput = getMigx(vertx, locations)
+        .migrate()
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get();
+
+      return new Pair<>(flywayOutput, migxOutput);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
   @Test
   @DisplayName("The migration history tables match")
   void migrationHistoriesMatch() {
-    migrate(List.of("db/migration"), Database.values());
+    migrate(List.of("db/migration"));
     List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(FLYWAY);
     List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(MIGX);
     assertIterableEquals(flywaySchemaHistory, migxSchemaHistory);
   }
 
-  @ParameterizedTest
-  @EnumSource(Database.class)
+  @Test
   @DisplayName("Migrations fail when table already exists")
-  void migrationsFailWhenTableAlreadyExists(Database db) {
-    Assertions.assertThrows(Throwable.class, () -> {
-      migrate(List.of("db/migration", "db/migration2"), db);
-    });
+  void migrationsFailWhenTableAlreadyExists() {
+    Assertions.assertThrows(Throwable.class, () -> migrate(List.of("db/migration", "db/migration2")));
   }
 }

@@ -9,6 +9,8 @@ repositories {
 dependencies {
   implementation "io.vertx:vertx-core:4.5.14"
   implementation "io.vertx:vertx-sql-client:4.5.14"
+  compileOnly "io.avaje:avaje-record-builder:1.2"
+  annotationProcessor "io.avaje:avaje-record-builder:1.2"
   testImplementation "io.vertx:vertx-pg-client:4.5.14"
   testImplementation "io.vertx:vertx-junit5:4.5.14"
   testImplementation "org.testcontainers:testcontainers:1.20.6"

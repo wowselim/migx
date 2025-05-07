@@ -10,6 +10,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.sqlclient.Pool;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class PoolMigx implements Migx {
@@ -29,11 +30,11 @@ public class PoolMigx implements Migx {
   }
 
   @Override
-  public Future<Void> migrate() {
-    return runMigrations().mapEmpty();
+  public Future<List<MigrationOutput>> migrate() {
+    return runMigrations();
   }
 
-  private Future<MigrationOutput> runMigrations() {
+  private Future<List<MigrationOutput>> runMigrations() {
     List<Future<List<String>>> migrationFiles = migrationPaths.stream()
       .map(path -> vertx.fileSystem().readDir(path))
       .toList();
@@ -50,12 +51,14 @@ public class PoolMigx implements Migx {
       });
   }
 
-  private Future<MigrationOutput> executeMigrationsSerially(List<String> paths) {
-    Future<MigrationOutput> chain = Future.succeededFuture();
+  private Future<List<MigrationOutput>> executeMigrationsSerially(List<String> paths) {
+    Future<List<MigrationOutput>> chain = Future.succeededFuture(new ArrayList<>(paths.size()));
     for (String path : paths) {
-      chain = chain.compose(x ->
+      chain = chain.compose(outputs ->
         loadMigrationScript(path)
           .compose(pgMigrationRunner::run)
+          .onSuccess(outputs::add)
+          .map(outputs)
       );
     }
     return chain;

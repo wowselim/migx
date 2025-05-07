@@ -20,7 +20,7 @@ public final class Paths {
   }
 
   public static String getVersionFromFilename(String filename) {
-    if (filename.startsWith("R")) return null;
+    if (filename.startsWith("R")) return "";
     return filename.substring(1, filename.indexOf(VERSION_SEPARATOR));
   }
 

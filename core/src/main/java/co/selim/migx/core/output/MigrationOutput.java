@@ -1,10 +1,14 @@
 package co.selim.migx.core.output;
 
-import co.selim.migx.core.impl.SqlMigrationScript;
+import io.avaje.recordbuilder.RecordBuilder;
 
+@RecordBuilder
 public record MigrationOutput(
-  SqlMigrationScript script,
-  long executionTime,
-  int checksum
+  String category,
+  String version,
+  String description,
+  String type,
+  String filepath,
+  long executionTime
 ) {
 }
