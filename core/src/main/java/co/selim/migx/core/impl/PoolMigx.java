@@ -36,6 +36,7 @@ public class PoolMigx implements Migx {
 
   private Future<List<MigrationOutput>> runMigrations() {
     List<Future<List<String>>> migrationFiles = migrationPaths.stream()
+      .distinct()
       .map(path -> vertx.fileSystem().readDir(path))
       .toList();
 

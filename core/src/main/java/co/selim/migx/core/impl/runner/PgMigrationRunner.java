@@ -118,7 +118,7 @@ public class PgMigrationRunner {
                   ". Expected " + storedChecksum + " but was " + currentChecksum
               ));
             }
-            return Future.succeededFuture(null); // Already applied
+            return Future.succeededFuture(); // Already applied
           }
         }));
   }

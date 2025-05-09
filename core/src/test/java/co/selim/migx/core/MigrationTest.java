@@ -1,6 +1,5 @@
 package co.selim.migx.core;
 
-import co.selim.migx.core.impl.util.Pair;
 import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
@@ -14,7 +13,7 @@ import java.util.List;
 
 import static co.selim.migx.core.IntegrationTest.Database.FLYWAY;
 import static co.selim.migx.core.IntegrationTest.Database.MIGX;
-import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(VertxExtension.class)
 public class MigrationTest extends IntegrationTest {
@@ -25,16 +24,17 @@ public class MigrationTest extends IntegrationTest {
     this.vertx = vertx;
   }
 
-  private Pair<List<MigrateOutput>, List<MigrationOutput>> migrate(List<String> locations) {
-    List<MigrateOutput> flywayOutput = getFlyway(locations.toArray(String[]::new)).migrate().migrations;
+  private List<MigrateOutput> migrateFlyway(List<String> locations) {
+    return getFlyway(locations.toArray(String[]::new)).migrate().migrations;
+  }
+
+  private List<MigrationOutput> migrateMigx(List<String> locations) {
     try {
-      List<MigrationOutput> migxOutput = getMigx(vertx, locations)
+      return getMigx(vertx, locations)
         .migrate()
         .toCompletionStage()
         .toCompletableFuture()
         .get();
-
-      return new Pair<>(flywayOutput, migxOutput);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -43,15 +43,46 @@ public class MigrationTest extends IntegrationTest {
   @Test
   @DisplayName("The migration history tables match")
   void migrationHistoriesMatch() {
-    migrate(List.of("db/migration"));
+    List<String> migrationPaths = List.of("db/migration");
+    migrateFlyway(migrationPaths);
+    migrateMigx(migrationPaths);
     List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(FLYWAY);
     List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(MIGX);
     assertIterableEquals(flywaySchemaHistory, migxSchemaHistory);
   }
 
   @Test
-  @DisplayName("Migrations fail when table already exists")
-  void migrationsFailWhenTableAlreadyExists() {
-    Assertions.assertThrows(Throwable.class, () -> migrate(List.of("db/migration", "db/migration2")));
+  @DisplayName("Duplicate files are ignored")
+  void duplicateFilesAreIgnored() {
+    List<String> migrationPaths = List.of("db/migration", "db/migration");
+    migrateFlyway(migrationPaths);
+    migrateMigx(migrationPaths);
+  }
+
+  @Test
+  @DisplayName("Migrations fail if duplicate versions exist")
+  void migrationsFailIfDuplicateVersionsExist() {
+    List<String> migrationPaths = List.of("db/duplicate-versions");
+    Throwable flywayError = Assertions.assertThrows(Throwable.class, () -> {
+      migrateFlyway(migrationPaths);
+    });
+    Throwable migxError = Assertions.assertThrows(Throwable.class, () -> {
+      migrateMigx(migrationPaths);
+    });
+
+    String message = "Found more than one migration with version 1.2";
+    assertTrue(flywayError.getMessage().contains(message));
+    assertTrue(migxError.getMessage().contains(message));
+  }
+
+  @Test
+  @DisplayName("Listing a path twice only runs the migrations once")
+  void listingPathTwiceRunsMigrationsOnlyOnce() {
+    List<String> migrationPaths = List.of("db/migration", "db/migration");
+    List<MigrateOutput> flywayMigrations = migrateFlyway(migrationPaths);
+    List<MigrationOutput> migxMigrations = migrateMigx(migrationPaths);
+
+    assertEquals(2, flywayMigrations.size());
+    assertEquals(flywayMigrations.size(), migxMigrations.size());
   }
 }

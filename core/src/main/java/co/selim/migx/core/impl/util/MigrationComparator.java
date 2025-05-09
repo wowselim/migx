@@ -26,7 +26,13 @@ public class MigrationComparator implements Comparator<String> {
     if (version1 == null && version2 != null) return 1;
     if (version1 != null && version2 == null) return -1;
     if (version1 != null) {
-      return compareVersions(version1, version2);
+      int versionComparison = compareVersions(version1, version2);
+      if (versionComparison == 0) {
+        throw new IllegalStateException(
+          "Found more than one migration with version " + Paths.getVersionFromFilename(filename1).replace('_', '.')
+        );
+      }
+      return versionComparison;
     }
 
     return 0;
