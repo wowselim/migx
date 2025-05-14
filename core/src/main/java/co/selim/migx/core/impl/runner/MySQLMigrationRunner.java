@@ -1,8 +1,6 @@
 package co.selim.migx.core.impl.runner;
 
 import co.selim.migx.core.impl.SqlMigrationScript;
-import co.selim.migx.core.impl.util.Checksums;
-import co.selim.migx.core.impl.util.Clock;
 import co.selim.migx.core.impl.util.Pair;
 import co.selim.migx.core.output.MigrationOutput;
 import co.selim.migx.core.output.MigrationOutputBuilder;
@@ -17,14 +15,14 @@ import static co.selim.migx.core.impl.util.Checksums.calculateChecksum;
 import static co.selim.migx.core.impl.util.Clock.millisSince;
 import static co.selim.migx.core.impl.util.Clock.now;
 
-public class PgMigrationRunner implements MigrationRunner {
+public class MySQLMigrationRunner implements MigrationRunner {
 
-  private static final Tuple LOCK_ID = Tuple.of("migx".hashCode());
+  private static final Tuple LOCK_NAME = Tuple.of("migx");
   private final Vertx vertx;
   private final Pool pool;
   private final AtomicBoolean schemaHistoryCreated = new AtomicBoolean(false);
 
-  public PgMigrationRunner(Vertx vertx, Pool pool) {
+  public MySQLMigrationRunner(Vertx vertx, Pool pool) {
     this.vertx = vertx;
     this.pool = pool;
   }
@@ -40,26 +38,69 @@ public class PgMigrationRunner implements MigrationRunner {
   }
 
   private Future<MigrationOutput> doRun(SqlMigrationScript script) {
-    return pool.withTransaction(connection ->
-      lock(connection)
-        .compose(x -> switch (script.category()) {
-          case VERSIONED -> runVersionedMigration(connection, script);
-          case REPEATABLE -> runRepeatableMigration(connection, script);
-        })
-        .compose(result -> updateHistoryTable(connection, script, result.left(), result.right()))
-    );
+    return pool.getConnection()
+      .compose(connection -> {
+          var y = switch (script.category()) {
+            // MySQL has different transaction behavior - DDL causes implicit commit
+            case VERSIONED -> lock(connection)
+              .compose(x -> runVersionedMigration(connection, script))
+              // TODO: does this need to be moved up after runVersionedMigration?
+              .eventually(() -> unlock(connection));
+            // REPEATABLE migrations can run without transaction
+            case REPEATABLE -> runRepeatableMigration(connection, script);
+          };
+          return y.compose(result -> updateHistoryTable(connection, script, result.left(), result.right()));
+        }
+      );
+  }
+
+  private Future<Void> lock(SqlConnection connection) {
+    return connection.preparedQuery("select get_lock(?, 0)")
+      .execute(LOCK_NAME)
+      .compose(rowSet -> {
+        Integer returnValue = rowSet.iterator().next().getInteger(0);
+        if (returnValue == null) {
+          return Future.failedFuture("Failed to acquire lock");
+        }
+        if (returnValue == 0) {
+          return Future.failedFuture("Timed out while waiting to acquire lock");
+        }
+        if (returnValue == 1) {
+          return Future.succeededFuture();
+        }
+        return Future.failedFuture(new IllegalStateException("Unexpected result when trying to acquire lock: " + returnValue));
+      });
+  }
+
+  private Future<Void> unlock(SqlConnection connection) {
+    return connection.preparedQuery("select release_lock(?)")
+      .execute(LOCK_NAME)
+      .compose(rowSet -> {
+        Integer returnValue = rowSet.iterator().next().getInteger(0);
+        if (returnValue == null) {
+          return Future.failedFuture("Expected lock to exist");
+        }
+        if (returnValue == 0) {
+          return Future.failedFuture("Failed to release lock");
+        }
+        if (returnValue == 1) {
+          return Future.succeededFuture();
+        }
+        return Future.failedFuture(new IllegalStateException("Unexpected result when trying to release lock: " + returnValue));
+      });
   }
 
   private Future<Void> createSchemaHistoryTableIfNotExists() {
     return vertx.fileSystem()
-      .readFile("pg_flyway_schema_history_ddl.sql")
+      .readFile("mysql_flyway_schema_history_ddl.sql")
       .compose(buffer -> pool.query(buffer.toString()).execute().mapEmpty());
   }
 
   private Future<Pair<MigrationOutput, Integer>> runRepeatableMigration(SqlConnection connection, SqlMigrationScript script) {
+    // Similar to PG version but without transaction
     return connection.preparedQuery("""
-        select checksum from flyway_schema_history \
-        where script = $1 \
+        select checksum FROM flyway_schema_history \
+        where script = ? \
         order by installed_rank desc \
         limit 1\
         """)
@@ -90,9 +131,10 @@ public class PgMigrationRunner implements MigrationRunner {
   }
 
   private Future<Pair<MigrationOutput, Integer>> runVersionedMigration(SqlConnection connection, SqlMigrationScript script) {
+    // For MySQL, we need to handle DDL separately since it causes implicit commit
     return connection.preparedQuery("""
         select checksum from flyway_schema_history \
-        where version = $1\
+        where version = ?\
         """)
       .execute(Tuple.of(script.version()))
       .compose(rowSet -> script.sql()
@@ -102,8 +144,10 @@ public class PgMigrationRunner implements MigrationRunner {
 
           if (!iterator.hasNext()) {
             long startTime = now();
-            return connection.query(sql).execute().map(sql)
-              .map(x -> {
+            // Execute the migration script (DDL)
+            return connection.query(sql).execute()
+              .compose(v -> {
+                // After DDL completes, we can record the history
                 MigrationOutput output = MigrationOutputBuilder.builder()
                   .category(script.category().toString())
                   .version(script.version())
@@ -112,7 +156,7 @@ public class PgMigrationRunner implements MigrationRunner {
                   .filepath(script.filepath())
                   .executionTime(millisSince(startTime))
                   .build();
-                return new Pair<>(output, currentChecksum);
+                return Future.succeededFuture(new Pair<>(output, currentChecksum));
               });
           } else {
             // Existing migration - verify checksum
@@ -128,12 +172,6 @@ public class PgMigrationRunner implements MigrationRunner {
         }));
   }
 
-  private Future<Void> lock(SqlConnection connection) {
-    return connection.preparedQuery("select pg_advisory_xact_lock($1)")
-      .execute(LOCK_ID)
-      .mapEmpty();
-  }
-
   private Future<MigrationOutput> updateHistoryTable(
     SqlConnection connection,
     SqlMigrationScript script,
@@ -147,7 +185,7 @@ public class PgMigrationRunner implements MigrationRunner {
     String sql = """
       insert into flyway_schema_history \
       (installed_rank, version, description, type, script, checksum, installed_by, installed_on, execution_time, success) \
-      select coalesce(max(installed_rank), 0) + 1, $1, $2, 'SQL', $3, $4, current_user, $5, $6, TRUE \
+      select coalesce(max(installed_rank), 0) + 1, ?, ?, 'SQL', ?, ?, substring_index(current_user(), '@', 1), ?, ?, TRUE \
       from flyway_schema_history\
       """;
 

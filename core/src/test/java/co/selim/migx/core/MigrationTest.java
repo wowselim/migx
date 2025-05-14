@@ -6,13 +6,14 @@ import io.vertx.junit5.VertxExtension;
 import org.flywaydb.core.api.output.MigrateOutput;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.List;
 
-import static co.selim.migx.core.IntegrationTest.Database.FLYWAY;
-import static co.selim.migx.core.IntegrationTest.Database.MIGX;
+import static co.selim.migx.core.IntegrationTest.MigrationTool.FLYWAY;
+import static co.selim.migx.core.IntegrationTest.MigrationTool.MIGX;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(VertxExtension.class)
@@ -24,13 +25,13 @@ public class MigrationTest extends IntegrationTest {
     this.vertx = vertx;
   }
 
-  private List<MigrateOutput> migrateFlyway(List<String> locations) {
-    return getFlyway(locations.toArray(String[]::new)).migrate().migrations;
+  private List<MigrateOutput> migrateFlyway(Database db, List<String> locations) {
+    return getFlyway(db, locations.toArray(String[]::new)).migrate().migrations;
   }
 
-  private List<MigrationOutput> migrateMigx(List<String> locations) {
+  private List<MigrationOutput> migrateMigx(Database db, List<String> locations) {
     try {
-      return getMigx(vertx, locations)
+      return getMigx(vertx, db, locations)
         .migrate()
         .toCompletionStage()
         .toCompletableFuture()
@@ -40,34 +41,37 @@ public class MigrationTest extends IntegrationTest {
     }
   }
 
-  @Test
+  @ParameterizedTest
+  @EnumSource(IntegrationTest.Database.class)
   @DisplayName("The migration history tables match")
-  void migrationHistoriesMatch() {
+  void migrationHistoriesMatch(Database db) {
     List<String> migrationPaths = List.of("db/migration");
-    migrateFlyway(migrationPaths);
-    migrateMigx(migrationPaths);
-    List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(FLYWAY);
-    List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(MIGX);
+    migrateFlyway(db, migrationPaths);
+    migrateMigx(db, migrationPaths);
+    List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(db, FLYWAY);
+    List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(db, MIGX);
     assertIterableEquals(flywaySchemaHistory, migxSchemaHistory);
   }
 
-  @Test
+  @ParameterizedTest
+  @EnumSource(IntegrationTest.Database.class)
   @DisplayName("Duplicate files are ignored")
-  void duplicateFilesAreIgnored() {
+  void duplicateFilesAreIgnored(Database db) {
     List<String> migrationPaths = List.of("db/migration", "db/migration");
-    migrateFlyway(migrationPaths);
-    migrateMigx(migrationPaths);
+    migrateFlyway(db, migrationPaths);
+    migrateMigx(db, migrationPaths);
   }
 
-  @Test
+  @ParameterizedTest
+  @EnumSource(IntegrationTest.Database.class)
   @DisplayName("Migrations fail if duplicate versions exist")
-  void migrationsFailIfDuplicateVersionsExist() {
+  void migrationsFailIfDuplicateVersionsExist(Database db) {
     List<String> migrationPaths = List.of("db/duplicate-versions");
     Throwable flywayError = Assertions.assertThrows(Throwable.class, () -> {
-      migrateFlyway(migrationPaths);
+      migrateFlyway(db, migrationPaths);
     });
     Throwable migxError = Assertions.assertThrows(Throwable.class, () -> {
-      migrateMigx(migrationPaths);
+      migrateMigx(db, migrationPaths);
     });
 
     String message = "Found more than one migration with version 1.2";
@@ -75,12 +79,13 @@ public class MigrationTest extends IntegrationTest {
     assertTrue(migxError.getMessage().contains(message));
   }
 
-  @Test
+  @ParameterizedTest
+  @EnumSource(IntegrationTest.Database.class)
   @DisplayName("Listing a path twice only runs the migrations once")
-  void listingPathTwiceRunsMigrationsOnlyOnce() {
+  void listingPathTwiceRunsMigrationsOnlyOnce(Database db) {
     List<String> migrationPaths = List.of("db/migration", "db/migration");
-    List<MigrateOutput> flywayMigrations = migrateFlyway(migrationPaths);
-    List<MigrationOutput> migxMigrations = migrateMigx(migrationPaths);
+    List<MigrateOutput> flywayMigrations = migrateFlyway(db, migrationPaths);
+    List<MigrationOutput> migxMigrations = migrateMigx(db, migrationPaths);
 
     assertEquals(2, flywayMigrations.size());
     assertEquals(flywayMigrations.size(), migxMigrations.size());

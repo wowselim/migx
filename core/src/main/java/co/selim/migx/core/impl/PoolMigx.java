@@ -1,14 +1,13 @@
 package co.selim.migx.core.impl;
 
 import co.selim.migx.core.Migx;
-import co.selim.migx.core.impl.runner.PgMigrationRunner;
+import co.selim.migx.core.impl.runner.MigrationRunner;
 import co.selim.migx.core.impl.util.MigrationComparator;
 import co.selim.migx.core.impl.util.Paths;
 import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.sqlclient.Pool;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,16 +16,12 @@ public class PoolMigx implements Migx {
 
   private final Vertx vertx;
   private final List<String> migrationPaths;
-  private final PgMigrationRunner pgMigrationRunner;
+  private final MigrationRunner migrationRunner;
 
-  public PoolMigx(Vertx vertx, Pool pool) {
-    this(vertx, pool, List.of("db/migration"));
-  }
-
-  public PoolMigx(Vertx vertx, Pool pool, List<String> migrationPaths) {
+  public PoolMigx(Vertx vertx, List<String> migrationPaths, MigrationRunner migrationRunner) {
     this.vertx = vertx;
     this.migrationPaths = migrationPaths;
-    this.pgMigrationRunner = new PgMigrationRunner(vertx, pool);
+    this.migrationRunner = migrationRunner;
   }
 
   @Override
@@ -57,7 +52,7 @@ public class PoolMigx implements Migx {
     for (String path : paths) {
       chain = chain.compose(outputs ->
         loadMigrationScript(path)
-          .compose(pgMigrationRunner::run)
+          .compose(migrationRunner::run)
           .onSuccess(outputs::add)
           .map(outputs)
       );

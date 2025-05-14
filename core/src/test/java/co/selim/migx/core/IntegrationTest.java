@@ -1,12 +1,16 @@
 package co.selim.migx.core;
 
 import io.vertx.core.Vertx;
+import io.vertx.mysqlclient.MySQLConnectOptions;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
+import io.vertx.sqlclient.SqlConnectOptions;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Assertions;
+import org.testcontainers.containers.JdbcDatabaseContainer;
+import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -19,22 +23,34 @@ import java.util.List;
 @Testcontainers
 public abstract class IntegrationTest {
 
-  private static final String PG_IMAGE_NAME = "postgres:14.3";
+  @Container
+  private final JdbcDatabaseContainer<?> flywayPgContainer = new PostgreSQLContainer<>("postgres:14.3");
 
   @Container
-  protected final PostgreSQLContainer<?> flywayContainer = new PostgreSQLContainer<>(PG_IMAGE_NAME);
+  private final JdbcDatabaseContainer<?> migxPgContainer = new PostgreSQLContainer<>("postgres:14.3");
 
   @Container
-  protected final PostgreSQLContainer<?> migxContainer = new PostgreSQLContainer<>(PG_IMAGE_NAME);
+  private final JdbcDatabaseContainer<?> flywayMySqlContainer = new MySQLContainer<>("mysql:8.0.36");
+
+  @Container
+  private final JdbcDatabaseContainer<?> migxMySqlContainer = new MySQLContainer<>("mysql:8.0.36");
 
   protected enum Database {
+    POSTGRES, MYSQL
+  }
+
+  protected enum MigrationTool {
     FLYWAY, MIGX
   }
 
-  protected Flyway getFlyway(String... locations) {
-    String jdbcUrl = flywayContainer.getJdbcUrl();
-    String username = flywayContainer.getUsername();
-    String password = flywayContainer.getPassword();
+  protected Flyway getFlyway(Database db, String... locations) {
+    JdbcDatabaseContainer<?> container = switch (db) {
+      case POSTGRES -> flywayPgContainer;
+      case MYSQL -> flywayMySqlContainer;
+    };
+    String jdbcUrl = container.getJdbcUrl();
+    String username = container.getUsername();
+    String password = container.getPassword();
 
     return new FluentConfiguration()
       .dataSource(jdbcUrl, username, password)
@@ -42,8 +58,8 @@ public abstract class IntegrationTest {
       .load();
   }
 
-  protected List<SchemaHistoryEntry> getSchemaHistory(Database database) {
-    return withConnection(database, connection -> {
+  protected List<SchemaHistoryEntry> getSchemaHistory(Database db, MigrationTool migrationTool) {
+    return withConnection(db, migrationTool, connection -> {
       String query = "select * from flyway_schema_history order by installed_rank";
       try (ResultSet resultSet = connection.createStatement().executeQuery(query)) {
         return SchemaHistoryEntry.MAPPER.apply(resultSet);
@@ -51,10 +67,16 @@ public abstract class IntegrationTest {
     });
   }
 
-  private <T> T withConnection(Database database, ThrowingFunction<Connection, T> function) {
-    PostgreSQLContainer<?> container = switch (database) {
-      case MIGX -> migxContainer;
-      case FLYWAY -> flywayContainer;
+  private <T> T withConnection(Database db, MigrationTool migrationTool, ThrowingFunction<Connection, T> function) {
+    JdbcDatabaseContainer<?> container = switch (migrationTool) {
+      case MIGX -> switch (db) {
+        case POSTGRES -> migxPgContainer;
+        case MYSQL -> migxMySqlContainer;
+      };
+      case FLYWAY -> switch (db) {
+        case POSTGRES -> flywayPgContainer;
+        case MYSQL -> flywayMySqlContainer;
+      };
     };
     try (Connection connection = DriverManager.getConnection(container.getJdbcUrl(), container.getUsername(), container.getPassword())) {
       return function.apply(connection);
@@ -64,14 +86,23 @@ public abstract class IntegrationTest {
     }
   }
 
-  protected Migx getMigx(Vertx vertx, List<String> locations) {
-    String jdbcUrl = migxContainer.getJdbcUrl();
-    String username = migxContainer.getUsername();
-    String password = migxContainer.getPassword();
+  protected Migx getMigx(Vertx vertx, Database db, List<String> locations) {
+    JdbcDatabaseContainer<?> container = switch (db) {
+      case POSTGRES -> migxPgContainer;
+      case MYSQL -> migxMySqlContainer;
+    };
+    String jdbcUrl = container.getJdbcUrl();
+    String username = container.getUsername();
+    String password = container.getPassword();
 
-    PgConnectOptions connectOptions = PgConnectOptions.fromUri(jdbcUrl.substring("jdbc:".length()))
-      .setUser(username)
-      .setPassword(password);
+    SqlConnectOptions connectOptions = switch (db) {
+      case POSTGRES -> PgConnectOptions.fromUri(jdbcUrl.substring("jdbc:".length()))
+        .setUser(username)
+        .setPassword(password);
+      case MYSQL -> MySQLConnectOptions.fromUri(jdbcUrl.substring("jdbc:".length()))
+        .setUser(username)
+        .setPassword(password);
+    };
     PoolOptions poolOptions = new PoolOptions().setMaxSize(4);
     Pool client = Pool.pool(vertx, connectOptions, poolOptions);
     return Migx.create(vertx, client, locations);
