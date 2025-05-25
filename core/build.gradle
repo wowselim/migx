@@ -7,13 +7,13 @@ repositories {
 }
 
 dependencies {
-  implementation "io.vertx:vertx-core:4.5.14"
-  implementation "io.vertx:vertx-sql-client:4.5.14"
+  implementation "io.vertx:vertx-core:5.0.0"
+  implementation "io.vertx:vertx-sql-client:5.0.0"
   compileOnly "io.avaje:avaje-record-builder:1.2"
   annotationProcessor "io.avaje:avaje-record-builder:1.2"
-  testImplementation "io.vertx:vertx-pg-client:4.5.14"
-  testImplementation "io.vertx:vertx-mysql-client:4.5.14"
-  testImplementation "io.vertx:vertx-junit5:4.5.14"
+  testImplementation "io.vertx:vertx-pg-client:5.0.0"
+  testImplementation "io.vertx:vertx-mysql-client:5.0.0"
+  testImplementation "io.vertx:vertx-junit5:5.0.0"
   testImplementation "org.testcontainers:testcontainers:1.20.6"
   testImplementation "org.testcontainers:postgresql:1.20.6"
   testImplementation "org.testcontainers:mysql:1.20.6"
@@ -26,13 +26,11 @@ dependencies {
   testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.9.1"
   testRuntimeOnly "org.slf4j:slf4j-simple:2.0.17"
   testRuntimeOnly("com.fasterxml.jackson.core:jackson-databind:2.19.0") { because("flyway dependency") }
-  testRuntimeOnly("com.ongres.scram:common:2.1") { because("pgclient auth dependency") }
-  testRuntimeOnly("com.ongres.scram:client:2.1") { because("pgclient auth dependency") }
 }
 
 java {
-  sourceCompatibility = JavaVersion.VERSION_17
-  targetCompatibility = JavaVersion.VERSION_17
+  sourceCompatibility = JavaVersion.VERSION_21
+  targetCompatibility = JavaVersion.VERSION_21
 }
 
 test {

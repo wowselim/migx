@@ -42,7 +42,7 @@ public class MigrationTest extends IntegrationTest {
   }
 
   @ParameterizedTest
-  @EnumSource(IntegrationTest.Database.class)
+  @EnumSource(Database.class)
   @DisplayName("The migration history tables match")
   void migrationHistoriesMatch(Database db) {
     List<String> migrationPaths = List.of("db/migration");
@@ -54,7 +54,7 @@ public class MigrationTest extends IntegrationTest {
   }
 
   @ParameterizedTest
-  @EnumSource(IntegrationTest.Database.class)
+  @EnumSource(Database.class)
   @DisplayName("Duplicate files are ignored")
   void duplicateFilesAreIgnored(Database db) {
     List<String> migrationPaths = List.of("db/migration", "db/migration");
@@ -63,7 +63,7 @@ public class MigrationTest extends IntegrationTest {
   }
 
   @ParameterizedTest
-  @EnumSource(IntegrationTest.Database.class)
+  @EnumSource(Database.class)
   @DisplayName("Migrations fail if duplicate versions exist")
   void migrationsFailIfDuplicateVersionsExist(Database db) {
     List<String> migrationPaths = List.of("db/duplicate-versions");
@@ -80,7 +80,7 @@ public class MigrationTest extends IntegrationTest {
   }
 
   @ParameterizedTest
-  @EnumSource(IntegrationTest.Database.class)
+  @EnumSource(Database.class)
   @DisplayName("Listing a path twice only runs the migrations once")
   void listingPathTwiceRunsMigrationsOnlyOnce(Database db) {
     List<String> migrationPaths = List.of("db/migration", "db/migration");
@@ -89,5 +89,21 @@ public class MigrationTest extends IntegrationTest {
 
     assertEquals(2, flywayMigrations.size());
     assertEquals(flywayMigrations.size(), migxMigrations.size());
+  }
+
+  @ParameterizedTest
+  @EnumSource(Database.class)
+  @DisplayName("Migrations can be run twice with no effect")
+  void migrationsCanBeRunTwiceWithNoEffect(Database db) {
+    List<String> migrationPaths = List.of("db/migration");
+    List<MigrateOutput> flywayMigrationsFirstRun = migrateFlyway(db, migrationPaths);
+    List<MigrationOutput> migxMigrationsFirstRun = migrateMigx(db, migrationPaths);
+    List<MigrateOutput> flywayMigrationsSecondRun = migrateFlyway(db, migrationPaths);
+    List<MigrationOutput> migxMigrationsSecondRun = migrateMigx(db, migrationPaths);
+
+    assertEquals(2, flywayMigrationsFirstRun.size());
+    assertEquals(2, migxMigrationsFirstRun.size());
+    assertEquals(0, flywayMigrationsSecondRun.size());
+    assertEquals(0, migxMigrationsSecondRun.size());
   }
 }

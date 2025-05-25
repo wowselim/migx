@@ -53,7 +53,11 @@ public class PoolMigx implements Migx {
       chain = chain.compose(outputs ->
         loadMigrationScript(path)
           .compose(migrationRunner::run)
-          .onSuccess(outputs::add)
+          .onSuccess(output -> {
+            if (output != null) {
+              outputs.add(output);
+            }
+          })
           .map(outputs)
       );
     }

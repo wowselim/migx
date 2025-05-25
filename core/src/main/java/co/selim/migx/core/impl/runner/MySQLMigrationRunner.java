@@ -40,16 +40,19 @@ public class MySQLMigrationRunner implements MigrationRunner {
   private Future<MigrationOutput> doRun(SqlMigrationScript script) {
     return pool.getConnection()
       .compose(connection -> {
-          var y = switch (script.category()) {
+          var output = switch (script.category()) {
             // MySQL has different transaction behavior - DDL causes implicit commit
             case VERSIONED -> lock(connection)
               .compose(x -> runVersionedMigration(connection, script))
-              // TODO: does this need to be moved up after runVersionedMigration?
               .eventually(() -> unlock(connection));
             // REPEATABLE migrations can run without transaction
             case REPEATABLE -> runRepeatableMigration(connection, script);
           };
-          return y.compose(result -> updateHistoryTable(connection, script, result.left(), result.right()));
+          return output.compose(result ->
+            result != null ?
+              updateHistoryTable(connection, script, result.left(), result.right()) :
+              Future.succeededFuture()
+          );
         }
       );
   }

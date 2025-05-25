@@ -4,7 +4,6 @@ import co.selim.migx.core.impl.PoolMigx;
 import co.selim.migx.core.impl.runner.MigrationRunner;
 import co.selim.migx.core.impl.runner.MySQLMigrationRunner;
 import co.selim.migx.core.impl.runner.PgMigrationRunner;
-import co.selim.migx.core.impl.util.Pools;
 import co.selim.migx.core.output.MigrationOutput;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;

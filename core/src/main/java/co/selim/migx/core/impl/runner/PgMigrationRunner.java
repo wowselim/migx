@@ -1,8 +1,6 @@
 package co.selim.migx.core.impl.runner;
 
 import co.selim.migx.core.impl.SqlMigrationScript;
-import co.selim.migx.core.impl.util.Checksums;
-import co.selim.migx.core.impl.util.Clock;
 import co.selim.migx.core.impl.util.Pair;
 import co.selim.migx.core.output.MigrationOutput;
 import co.selim.migx.core.output.MigrationOutputBuilder;
@@ -46,7 +44,11 @@ public class PgMigrationRunner implements MigrationRunner {
           case VERSIONED -> runVersionedMigration(connection, script);
           case REPEATABLE -> runRepeatableMigration(connection, script);
         })
-        .compose(result -> updateHistoryTable(connection, script, result.left(), result.right()))
+        .compose(result ->
+          result == null ?
+            Future.succeededFuture() :
+            updateHistoryTable(connection, script, result.left(), result.right())
+        )
     );
   }
 
