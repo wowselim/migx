@@ -6,70 +6,50 @@ import io.vertx.junit5.VertxExtension;
 import org.flywaydb.core.api.output.MigrateOutput;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.testcontainers.containers.JdbcDatabaseContainer;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@ExtendWith(VertxExtension.class)
-public class MigrationTest extends IntegrationTest {
+public class MigrationTest {
 
-  private final Vertx vertx;
+  @Nested
+  @ParameterizedClass
+  @ExtendWith(VertxExtension.class)
+  @MethodSource("co.selim.migx.core.IntegrationTest#dbArguments")
+  class Tests extends IntegrationTest {
 
-  public MigrationTest(Vertx vertx) {
-    this.vertx = vertx;
-  }
-
-  private List<MigrateOutput> migrateFlyway(JdbcDatabaseContainer<?> container, List<String> locations) {
-    return getFlyway(container, locations.toArray(String[]::new)).migrate().migrations;
-  }
-
-  private List<MigrationOutput> migrateMigx(JdbcDatabaseContainer<?> container, List<String> locations) {
-    try {
-      return getMigx(vertx, container, locations)
-        .migrate()
-        .toCompletionStage()
-        .toCompletableFuture()
-        .get();
-    } catch (Exception e) {
-      throw new RuntimeException(e);
+    protected Tests(ContainerConfiguration containerConfiguration) {
+      super(Vertx.vertx(), containerConfiguration);
     }
-  }
 
-  @ParameterizedTest
-  @MethodSource("dbArguments")
-  @DisplayName("The migration history tables match")
-  void migrationHistoriesMatch(JdbcDatabaseContainer<?> flywayContainer, JdbcDatabaseContainer<?> migxContainer) {
-    withContainers(flywayContainer, migxContainer, () -> {
+    @Test
+    @DisplayName("The migration history tables match")
+    void migrationHistoriesMatch() {
       List<String> migrationPaths = List.of("db/migration");
       migrateFlyway(flywayContainer, migrationPaths);
       migrateMigx(migxContainer, migrationPaths);
       List<SchemaHistoryEntry> flywaySchemaHistory = getSchemaHistory(flywayContainer);
       List<SchemaHistoryEntry> migxSchemaHistory = getSchemaHistory(migxContainer);
       assertIterableEquals(flywaySchemaHistory, migxSchemaHistory);
-    });
-  }
+    }
 
-  @ParameterizedTest
-  @MethodSource("dbArguments")
-  @DisplayName("Duplicate files are ignored")
-  void duplicateFilesAreIgnored(JdbcDatabaseContainer<?> flywayContainer, JdbcDatabaseContainer<?> migxContainer) {
-    withContainers(flywayContainer, migxContainer, () -> {
+    @Test
+    @DisplayName("Duplicate files are ignored")
+    void duplicateFilesAreIgnored() {
       List<String> migrationPaths = List.of("db/migration", "db/migration");
       migrateFlyway(flywayContainer, migrationPaths);
       migrateMigx(migxContainer, migrationPaths);
-    });
-  }
+    }
 
-  @ParameterizedTest
-  @MethodSource("dbArguments")
-  @DisplayName("Migrations fail if duplicate versions exist")
-  void migrationsFailIfDuplicateVersionsExist(JdbcDatabaseContainer<?> flywayContainer, JdbcDatabaseContainer<?> migxContainer) {
-    withContainers(flywayContainer, migxContainer, () -> {
+    @Test
+    @DisplayName("Migrations fail if duplicate versions exist")
+    void migrationsFailIfDuplicateVersionsExist() {
       List<String> migrationPaths = List.of("db/duplicate-versions");
       Throwable flywayError = Assertions.assertThrows(Throwable.class, () -> {
         migrateFlyway(flywayContainer, migrationPaths);
@@ -81,28 +61,22 @@ public class MigrationTest extends IntegrationTest {
       String message = "Found more than one migration with version 1.2";
       assertTrue(flywayError.getMessage().contains(message));
       assertTrue(migxError.getMessage().contains(message));
-    });
-  }
+    }
 
-  @ParameterizedTest
-  @MethodSource("dbArguments")
-  @DisplayName("Listing a path twice only runs the migrations once")
-  void listingPathTwiceRunsMigrationsOnlyOnce(JdbcDatabaseContainer<?> flywayContainer, JdbcDatabaseContainer<?> migxContainer) {
-    withContainers(flywayContainer, migxContainer, () -> {
+    @Test
+    @DisplayName("Listing a path twice only runs the migrations once")
+    void listingPathTwiceRunsMigrationsOnlyOnce() {
       List<String> migrationPaths = List.of("db/migration", "db/migration");
       List<MigrateOutput> flywayMigrations = migrateFlyway(flywayContainer, migrationPaths);
       List<MigrationOutput> migxMigrations = migrateMigx(migxContainer, migrationPaths);
 
       assertEquals(2, flywayMigrations.size());
       assertEquals(flywayMigrations.size(), migxMigrations.size());
-    });
-  }
+    }
 
-  @ParameterizedTest
-  @MethodSource("dbArguments")
-  @DisplayName("Migrations can be run twice with no effect")
-  void migrationsCanBeRunTwiceWithNoEffect(JdbcDatabaseContainer<?> flywayContainer, JdbcDatabaseContainer<?> migxContainer) {
-    withContainers(flywayContainer, migxContainer, () -> {
+    @Test
+    @DisplayName("Migrations can be run twice with no effect")
+    void migrationsCanBeRunTwiceWithNoEffect() {
       List<String> migrationPaths = List.of("db/migration");
       List<MigrateOutput> flywayMigrationsFirstRun = migrateFlyway(flywayContainer, migrationPaths);
       List<MigrationOutput> migxMigrationsFirstRun = migrateMigx(migxContainer, migrationPaths);
@@ -113,6 +87,6 @@ public class MigrationTest extends IntegrationTest {
       assertEquals(2, migxMigrationsFirstRun.size());
       assertEquals(0, flywayMigrationsSecondRun.size());
       assertEquals(0, migxMigrationsSecondRun.size());
-    });
+    }
   }
 }
