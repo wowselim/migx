@@ -32,11 +32,8 @@ public abstract class IntegrationTest {
   protected final JdbcDatabaseContainer<?> flywayContainer;
   protected final JdbcDatabaseContainer<?> migxContainer;
 
-  protected IntegrationTest(
-    Vertx vertx,
-    ContainerConfiguration containerConfiguration
-  ) {
-    this.vertx = vertx;
+  protected IntegrationTest(ContainerConfiguration containerConfiguration) {
+    this.vertx = Vertx.vertx();
     this.flywayContainer = containerConfiguration.flywayContainer();
     this.migxContainer = containerConfiguration.migxContainer();
   }
@@ -55,6 +52,10 @@ public abstract class IntegrationTest {
       CompletableFuture.runAsync(flywayContainer::stop),
       CompletableFuture.runAsync(migxContainer::stop)
     ).join();
+    vertx.close()
+      .toCompletionStage()
+      .toCompletableFuture()
+      .join();
   }
 
   private static JdbcDatabaseContainer<?> pgContainer() {

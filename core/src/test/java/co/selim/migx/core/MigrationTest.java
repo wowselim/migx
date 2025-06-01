@@ -1,14 +1,11 @@
 package co.selim.migx.core;
 
 import co.selim.migx.core.output.MigrationOutput;
-import io.vertx.core.Vertx;
-import io.vertx.junit5.VertxExtension;
 import org.flywaydb.core.api.output.MigrateOutput;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -20,12 +17,11 @@ public class MigrationTest {
 
   @Nested
   @ParameterizedClass
-  @ExtendWith(VertxExtension.class)
   @MethodSource("co.selim.migx.core.IntegrationTest#dbArguments")
   class Tests extends IntegrationTest {
 
     protected Tests(ContainerConfiguration containerConfiguration) {
-      super(Vertx.vertx(), containerConfiguration);
+      super(containerConfiguration);
     }
 
     @Test
