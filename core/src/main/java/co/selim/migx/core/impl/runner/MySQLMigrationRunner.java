@@ -100,7 +100,6 @@ public class MySQLMigrationRunner implements MigrationRunner {
   }
 
   private Future<Pair<MigrationOutput, Integer>> runRepeatableMigration(SqlConnection connection, SqlMigrationScript script) {
-    // Similar to PG version but without transaction
     return connection.preparedQuery("""
         select checksum FROM flyway_schema_history \
         where script = ? \
@@ -147,10 +146,8 @@ public class MySQLMigrationRunner implements MigrationRunner {
 
           if (!iterator.hasNext()) {
             long startTime = now();
-            // Execute the migration script (DDL)
             return connection.query(sql).execute()
               .compose(v -> {
-                // After DDL completes, we can record the history
                 MigrationOutput output = MigrationOutputBuilder.builder()
                   .category(script.category().toString())
                   .version(script.version())
